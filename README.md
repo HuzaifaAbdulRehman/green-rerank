@@ -58,7 +58,7 @@ cross). Below that the neighbourhood model is the cheaper deployment, above it t
 model. Only 13 of 45 configuration pairs cross stably enough to report — that denominator
 is part of the result.
 
-**Fairness reranking is 80–98 % of per-request cost**, multiplying serving cost 4.9× to
+**Fairness reranking is 81–98 % of per-request cost**, multiplying serving cost 5.3× to
 43.8×. A deployer adding exposure fairness to a popularity baseline is not paying a
 margin, they are paying **24 times** their serving cost. As far as the literature search
 found, this is the first published figure for what a fairness reranker costs as a share
@@ -68,14 +68,15 @@ of a pipeline.
 the rerank stage (cost scales O(n^1.2–1.3)), delivers **no** measurable fairness
 improvement (exposure parity flat at 0.254), and *loses* accuracy.
 
-**Most models do not beat recommending the most popular items.** On MovieLens 100K only
-GRU4Rec beats a popularity baseline under a paired per-user test, and only on recall
-(37 wins / 11 losses, p = 0.0073) — for 451 CPU-seconds of training against popularity's
-0.000167, a factor of 2.7 million. ItemKNN, ALS and MultVAE show no detectable
-difference. ItemKNN and MultVAE are *dominated*: costlier than popularity and less
-accurate, so they should not be deployed on that catalogue at all. On `software` the
-verdict flips and ItemKNN and ALS win clearly — the catalogue-dependence is itself the
-finding.
+**On MovieLens 100K, almost nothing beats recommending the most popular items.** Only
+GRU4Rec beats that baseline under a paired per-user test (NDCG 42/16, p = 0.043)
+— for 451 CPU-seconds of training against popularity's 0.000167, a factor of 2.7 million.
+ItemKNN, ALS and MultVAE show no detectable difference there, and ItemKNN and MultVAE are
+*dominated*: costlier than popularity and less accurate.
+
+But ML-100K is the **exception**, not the rule: ItemKNN beats popularity on four of the
+five catalogues. A method validated only on ML-100K — the catalogue everyone uses — can
+therefore be reported as beating a baseline it does not beat.
 
 **Retraining cadence is a bigger lever than model choice.** Holding traffic fixed,
 GRU4Rec's total cost moves 791× between never retraining and retraining every 100
@@ -91,12 +92,12 @@ Reproduce with `python -m experiments.validity`:
 
 | busy workers | reported CPU power | reported utilisation | reported RAM power | total energy |
 |--------------|--------------------|----------------------|--------------------|--------------|
-| 0 | 1.500 W | 0.0 % | 10.000 W | 7.459e-05 kWh |
-| 4 | 1.523 W | 0.0 % | 10.000 W | 6.722e-05 kWh |
-| 8 | 1.687 W | 0.0 % | 10.000 W | 7.418e-05 kWh |
+| 0 | 1.500 W | 0.0 % | 10.000 W | 7.371e-05 kWh |
+| 4 | 1.521 W | 0.0 % | 10.000 W | 6.715e-05 kWh |
+| 8 | 1.660 W | 0.0 % | 10.000 W | 7.329e-05 kWh |
 
 Utilisation reads exactly zero at every level including eight saturated cores. CPU power
-moves **1.12×** across the full span, against a true dynamic range of roughly 10× for
+moves **1.11×** across the full span, against a true dynamic range of roughly 10× for
 this part. RAM power is exactly 10.000 W throughout — a hardcoded constant, and it
 dominates the total. The fully loaded run reports **less** total energy than idle.
 

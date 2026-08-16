@@ -210,26 +210,27 @@ handing the backend an easier test than it needs to pass).
 
 Measured on **codecarbon 3.3.0**, five conditions of 20 seconds each, on an idle machine:
 
+Reproduced verbatim from `results/validity/graded_load.csv`:
+
 | busy workers | reported CPU power | reported utilisation | reported RAM power | total energy |
 |--------------|--------------------|----------------------|--------------------|--------------|
-| 0 | 1.500 W | 0.0 % | 10.000 W | 7.459e-05 kWh |
-| 1 | 1.501 W | 0.0 % | 10.000 W | 6.611e-05 kWh |
-| 2 | 1.504 W | 0.0 % | 10.000 W | 6.613e-05 kWh |
-| 4 | 1.523 W | 0.0 % | 10.000 W | 6.722e-05 kWh |
-| 8 | 1.687 W | 0.0 % | 10.000 W | 7.418e-05 kWh |
+| 0 | 1.500 W | 0.0 % | 10.000 W | 7.371e-05 kWh |
+| 1 | 1.501 W | 0.0 % | 10.000 W | 6.601e-05 kWh |
+| 2 | 1.503 W | 0.0 % | 10.000 W | 6.620e-05 kWh |
+| 4 | 1.521 W | 0.0 % | 10.000 W | 6.715e-05 kWh |
+| 8 | 1.660 W | 0.0 % | 10.000 W | 7.329e-05 kWh |
 
 Four things, none of which is a matter of precision:
 
 1. **Utilisation reads exactly 0.0 % at every level**, including eight saturated cores.
-2. **CPU power moves 1.12×** across the full span from idle to saturation, against a true
+2. **CPU power moves 1.11×** across the full span from idle to saturation, against a true
    dynamic range of roughly 10× for a 15 W part.
 3. **RAM power is exactly 10.000 W at every level** — a hardcoded constant, and it
    dominates the total. A channel that is bit-for-bit identical from idle to full
    saturation is not a noisy measurement of the load; it is not a measurement of the
    load, and it needs no threshold to interpret.
-4. **The fully loaded run reports less total energy than the idle one** (7.418e-05
-   against 7.459e-05 kWh), despite running 1.3 seconds longer. Per second the inversion
-   is larger still: 3.47e-06 loaded against 3.73e-06 idle.
+4. **The fully loaded run reports less total energy than the idle one** (7.329e-05
+   against 7.371e-05 kWh), despite running 1.3 seconds longer.
 
 An earlier draft of this section recorded that 3.3.0 had partly fixed the utilisation
 probe, having seen it report 16.7 % once. That observation was taken while another
@@ -318,9 +319,9 @@ threshold), the conditions monitor recorded mains power throughout with no frequ
 change across 1,981 samples, and **no stage fell below the clock quantum** — every
 reading was grown above the scheduler tick rather than reported as one.
 
-Run-to-run spread on identical work ranged from 12 % to 61 % of the median. That is the
-noise floor every difference below has to clear, and it is why the break-even is reported
-as an interval.
+Run-to-run spread on identical work ranged from 12 % to 90 % of the median, with a
+median of 25 %. That is the noise floor every difference below has to clear, and it is
+why the break-even is reported as an interval rather than a point.
 
 ### 7.1 Break-even between families
 
@@ -345,8 +346,8 @@ question even has an answer.
 
 ### 7.2 The cost of fairness reranking
 
-**The reranker accounts for 80 – 98 % of per-request cost, multiplying serving cost by
-4.9× to 43.8×.** Measured across all five catalogues and every family, 17 configurations
+**The reranker accounts for 81 – 98 % of per-request cost, multiplying serving cost by
+5.3× to 43.8×.** Measured across all five catalogues and every family, 17 configurations
 in total.
 
 | catalogue | family | rerank share | serving multiplier |
@@ -360,6 +361,13 @@ in total.
 | `ml100k` | `multvae` | 86.1 % | 7.2× |
 | `digital_music` | `als` | 80.6 % | 5.2× |
 | `ml100k` | `gru4rec` | 79.8 % | 4.9× |
+
+One caveat the row-level records make visible. `gift_cards` has 147 items, so the cap of
+§4.4 bound there and its runs used a retrieval depth of 117–126 rather than the nominal
+200. Since §7.6 shows the share depends on depth, those rows are not at the same problem
+size as the rest and are not strictly comparable to them. They are kept because the
+qualitative claim is unaffected and the difference is recorded on every affected row
+rather than being absorbed into an average.
 
 The share has structure rather than being a constant: it falls as retrieval itself gets
 more expensive. The reranker's cost is set by its problem size — 200 candidates, k = 10 —
@@ -431,24 +439,43 @@ discriminates between models that actually train.
 
 ### 7.5 Accuracy, tested rather than averaged
 
-**On MovieLens 100K, only GRU4Rec beats the popularity baseline — and only on recall**
-(37 wins, 11 losses, 152 ties; p = 0.0073 after Holm correction). ItemKNN, ALS and
-MultVAE show **no detectable difference** from recommending the globally most popular
-items to every user.
+87 paired comparisons against a popularity baseline, one Holm correction across the whole
+family; 51 reach significance. Restricting to NDCG and to families without a reranker:
 
-Set against §7.4: GRU4Rec costs 451 CPU-seconds to train against popularity's 0.000167 —
-a factor of 2.7 million — for the only accuracy gain on the catalogue that survives a
-paired test, on one metric.
+| catalogue | beats `popularity` on NDCG | does not |
+|-----------|----------------------------|----------|
+| `luxury_beauty` | `itemknn` (49/0), `als` (42/1) | — |
+| `software` | `itemknn` (28/1), `als` (27/2) | — |
+| `gift_cards` | `itemknn` (54/8) | `als` |
+| `digital_music` | `itemknn` (13/2) | `als` |
+| `ml100k` | `gru4rec` (42/16) | `itemknn`, `als`, `multvae` |
 
-The result is catalogue-dependent, and that dependence is itself the finding. On
-`software` both ItemKNN and ALS beat popularity clearly (28 wins against 1 loss,
-p = 0.0002). A study reporting either catalogue alone would support a confident and
-wrong generalisation.
+Win/loss counts in parentheses; all listed rows are significant after correction.
 
-This is the Green RecSys literature's central concern, measured: models costing orders of
-magnitude more frequently deliver no accuracy that a paired test can detect. Reporting
-means alone would have hidden it — the raw NDCG figures (`als` 0.0685 against
-`popularity` 0.0527) look like a 30 % improvement.
+**ItemKNN beats the popularity baseline on four of five catalogues.** So the strong
+version of the Green RecSys concern — that expensive models routinely buy nothing — is
+*not* what this study found, and an earlier draft of this section said it did, on the
+strength of MovieLens 100K alone. That draft would have been a confident generalisation
+from the one catalogue that happens not to support it.
+
+What the data does support is narrower and still worth saying:
+
+- **MovieLens 100K is the exception, and it is the catalogue everyone uses.** There,
+  neither ItemKNN nor ALS nor MultVAE is distinguishable from recommending the globally
+  most popular items. Only GRU4Rec beats the baseline (NDCG 42/16, p = 0.043; recall
+  37/11, p = 0.0073) — for 451 CPU-seconds of training against popularity's 0.000167, a
+  factor of 2.7 million. A method validated only on ML-100K can therefore be reported as
+  beating a baseline it does not beat.
+- **The winner is catalogue-dependent.** ALS beats popularity on two catalogues and not
+  on three. ItemKNN, which is *dominated* on ML-100K, is the most reliable performer
+  across the rest.
+- **Means would have hidden both.** On ML-100K the raw figures (`als` 0.0685 against
+  `popularity` 0.0527) read as a 30 % improvement, and it does not survive a paired test.
+
+Reranking's effect on accuracy also runs both ways, which is worth stating because it is
+usually assumed to be a cost. On `digital_music` and `luxury_beauty` the reranked variants
+are among the *significant winners* on NDCG; on `ml100k` reranking lowers it. Exposure
+parity, meanwhile, improves on 200 of 200 users everywhere it is applied.
 
 ### 7.6 How much of §7.2 is an artefact of retrieval depth?
 

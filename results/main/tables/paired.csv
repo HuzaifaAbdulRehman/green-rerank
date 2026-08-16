@@ -1,0 +1,88 @@
+dataset,config,reference,metric,n_users,median_diff,ci_lo,ci_hi,better,worse,tied,statistic,p_raw,p_holm,significant,verdict
+digital_music,itemknn+quota_mmr,popularity,exposure_parity,200,0.3,0.3,0.3,0,200,0,0.0,9.515945264271506e-38,7.993394021988066e-36,True,worse on 0/200 decided users
+digital_music,als,popularity,exposure_parity,200,1.3333333333333337,1.3333333333333337,1.3333333333333337,0,200,0,0.0,6.667504258760402e-36,5.200653321833114e-34,True,worse on 0/200 decided users
+digital_music,itemknn,popularity,exposure_parity,200,1.3,1.1,1.3,0,200,0,0.0,5.651906076038329e-35,4.351967678549514e-33,True,worse on 0/200 decided users
+digital_music,als+quota_mmr,popularity,exposure_parity,200,0.3,0.2666666666666666,0.3,0,186,14,0.0,1.1460407219627039e-33,7.793076909346386e-32,True,worse on 0/186 decided users
+digital_music,popularity+quota_mmr,popularity,exposure_parity,200,0.0,0.0,0.0,0,0,200,,1.0,1.0,False,no detectable difference
+digital_music,itemknn+quota_mmr,popularity,ndcg,200,0.0,0.0,0.0,20,2,178,4.0,6.608937940145509e-05,0.002841843314262569,True,better on 20/22 decided users
+digital_music,als+quota_mmr,popularity,ndcg,200,0.0,0.0,0.0,17,1,182,3.5,0.0003373973939415084,0.013495895757660336,True,better on 17/18 decided users
+digital_music,itemknn,popularity,ndcg,200,0.0,0.0,0.0,13,2,185,3.5,0.0012241458145500032,0.04651754095290012,True,better on 13/15 decided users
+digital_music,als,popularity,ndcg,200,0.0,0.0,0.0,11,1,188,3.0,0.00441108693012528,0.15879912948451005,False,no detectable difference
+digital_music,popularity+quota_mmr,popularity,ndcg,200,0.0,0.0,0.0,1,0,199,0.0,0.31731050786291415,1.0,False,no detectable difference
+digital_music,itemknn+quota_mmr,popularity,recall,200,0.0,0.0,0.0,20,1,179,11.0,3.381272563301567e-05,0.0015215726534857051,True,better on 20/21 decided users
+digital_music,als+quota_mmr,popularity,recall,200,0.0,0.0,0.0,16,1,183,9.0,0.0002747267638079423,0.011263797316125633,True,better on 16/17 decided users
+digital_music,itemknn,popularity,recall,200,0.0,0.0,0.0,13,1,186,7.5,0.0013406411172294783,0.0496037213374907,True,better on 13/14 decided users
+digital_music,als,popularity,recall,200,0.0,0.0,0.0,10,1,189,6.0,0.006655605482949377,0.22629058642027883,False,no detectable difference
+digital_music,popularity+quota_mmr,popularity,recall,200,0.0,0.0,0.0,0,0,200,,1.0,1.0,False,no detectable difference
+gift_cards,popularity+quota_mmr,popularity,exposure_parity,200,-1.2,-1.2,-1.2,200,0,0,0.0,5.539636872444884e-45,4.7640877103026e-43,True,better on 200/200 decided users
+gift_cards,itemknn+quota_mmr,popularity,exposure_parity,200,-1.2,-1.2,-1.2,200,0,0,0.0,1.1474551774346256e-37,9.523877972707392e-36,True,better on 200/200 decided users
+gift_cards,als+quota_mmr,popularity,exposure_parity,200,-1.2,-1.2,-1.2,200,0,0,0.0,6.7150330873392804e-37,5.372026469871425e-35,True,better on 200/200 decided users
+gift_cards,als,popularity,exposure_parity,200,-1.0,-1.1,-1.0,200,0,0,0.0,7.838729823459293e-35,5.8790473675944696e-33,True,better on 200/200 decided users
+gift_cards,itemknn,popularity,exposure_parity,200,0.0,0.0,0.0,72,0,128,0.0,4.232006950324499e-14,2.7084844482076793e-12,True,better on 72/72 decided users
+gift_cards,itemknn,popularity,ndcg,200,0.0,0.0,0.0,54,8,138,305.5,2.4868268499415647e-06,0.0001268281693470198,True,better on 54/62 decided users
+gift_cards,itemknn+quota_mmr,popularity,ndcg,200,0.0,0.0,0.0,39,16,145,440.5,0.005651497448488874,0.19780241069711058,False,no detectable difference
+gift_cards,als,popularity,ndcg,200,0.0,0.0,0.0,24,23,153,563.5,0.9957731986619343,1.0,False,no detectable difference
+gift_cards,als+quota_mmr,popularity,ndcg,200,0.0,0.0,0.0,21,24,155,489.0,0.7473432612307453,1.0,False,no detectable difference
+gift_cards,popularity+quota_mmr,popularity,ndcg,200,0.0,0.0,0.0,10,13,177,137.5,0.9877398364710943,1.0,False,no detectable difference
+gift_cards,itemknn,popularity,recall,200,0.0,0.0,0.0,39,3,158,64.5,2.7773798106167605e-08,1.4997850977330508e-06,True,better on 39/42 decided users
+gift_cards,itemknn+quota_mmr,popularity,recall,200,0.0,0.0,0.0,32,14,154,329.0,0.007955438571009407,0.2625294728433104,False,no detectable difference
+gift_cards,als,popularity,recall,200,0.0,0.0,0.0,24,22,154,517.0,0.7680825619009432,1.0,False,no detectable difference
+gift_cards,als+quota_mmr,popularity,recall,200,0.0,0.0,0.0,21,24,155,483.0,0.6547208460185769,1.0,False,no detectable difference
+gift_cards,popularity+quota_mmr,popularity,recall,200,0.0,0.0,0.0,9,13,178,103.5,0.3937686346429927,1.0,False,no detectable difference
+luxury_beauty,als+quota_mmr,popularity,exposure_parity,200,0.3,0.3,0.3,0,200,0,0.0,1.6241663100702047e-37,1.3318163742575677e-35,True,worse on 0/200 decided users
+luxury_beauty,itemknn+quota_mmr,popularity,exposure_parity,200,0.3,0.3,0.3,0,200,0,0.0,4.160566910271324e-37,3.3700591973197723e-35,True,worse on 0/200 decided users
+luxury_beauty,itemknn,popularity,exposure_parity,200,1.0,0.9,1.1,0,200,0,0.0,7.658500863001049e-35,5.820460655880797e-33,True,worse on 0/200 decided users
+luxury_beauty,als,popularity,exposure_parity,200,0.8,0.7,0.8,0,200,0,0.0,9.294145568888757e-35,6.76763902104329e-33,True,worse on 0/200 decided users
+luxury_beauty,popularity+quota_mmr,popularity,exposure_parity,200,0.0,0.0,0.0,0,0,200,,1.0,1.0,False,no detectable difference
+luxury_beauty,itemknn,popularity,ndcg,200,0.0,0.0,0.0,49,0,151,0.0,5.37567742614769e-10,3.11789290716566e-08,True,better on 49/49 decided users
+luxury_beauty,itemknn+quota_mmr,popularity,ndcg,200,0.0,0.0,0.0,44,0,156,0.0,3.0836653939464066e-09,1.7576892745494517e-07,True,better on 44/44 decided users
+luxury_beauty,als,popularity,ndcg,200,0.0,0.0,0.0,42,1,157,19.0,2.1123674345562125e-08,1.182925763351479e-06,True,better on 42/43 decided users
+luxury_beauty,als+quota_mmr,popularity,ndcg,200,0.0,0.0,0.0,44,1,155,33.0,2.3104333092298305e-08,1.2707383200764067e-06,True,better on 44/45 decided users
+luxury_beauty,popularity+quota_mmr,popularity,ndcg,200,0.0,0.0,0.0,3,0,197,0.0,0.10247043485974937,1.0,False,no detectable difference
+luxury_beauty,itemknn,popularity,recall,200,0.0,0.0,0.0,47,0,153,0.0,7.098670445201005e-12,4.401175676024623e-10,True,better on 47/47 decided users
+luxury_beauty,itemknn+quota_mmr,popularity,recall,200,0.0,0.0,0.0,42,0,158,0.0,9.12734179928913e-11,5.567678497566369e-09,True,better on 42/42 decided users
+luxury_beauty,als,popularity,recall,200,0.0,0.0,0.0,40,0,160,0.0,2.5396285894708567e-10,1.523777153682514e-08,True,better on 40/40 decided users
+luxury_beauty,als+quota_mmr,popularity,recall,200,0.0,0.0,0.0,42,1,157,22.0,4.040854277244357e-10,2.3841040235741708e-08,True,better on 42/43 decided users
+luxury_beauty,popularity+quota_mmr,popularity,recall,200,0.0,0.0,0.0,2,0,198,0.0,0.15729920705028502,1.0,False,no detectable difference
+ml100k,als+quota_mmr,popularity,exposure_parity,200,-1.0,-1.0,-1.0,200,0,0,0.0,8.386805309495429e-35,6.206235929026617e-33,True,better on 200/200 decided users
+ml100k,popularity+quota_mmr,popularity,exposure_parity,200,-1.0,-1.0,-1.0,200,0,0,0.0,9.270738384990808e-35,6.76763902104329e-33,True,better on 200/200 decided users
+ml100k,gru4rec+quota_mmr,popularity,exposure_parity,200,-1.0,-1.0,-1.0,200,0,0,0.0,9.675066666717802e-35,6.79306951178254e-33,True,better on 200/200 decided users
+ml100k,itemknn+quota_mmr,popularity,exposure_parity,200,-1.0,-1.1,-1.0,200,0,0,0.0,9.567703537721888e-35,6.79306951178254e-33,True,better on 200/200 decided users
+ml100k,multvae+quota_mmr,popularity,exposure_parity,200,-1.0,-1.1,-1.0,200,0,0,0.0,9.60112927358877e-35,6.79306951178254e-33,True,better on 200/200 decided users
+ml100k,als,popularity,exposure_parity,200,-0.4,-0.5,-0.3999999999999999,161,27,12,1417.0,1.5036121728912356e-23,9.923840341082156e-22,True,better on 161/188 decided users
+ml100k,gru4rec,popularity,exposure_parity,200,-0.30000000000000004,-0.3999999999999999,-0.20000000000000007,148,31,21,2045.0,4.400779960646193e-18,2.8605069744200256e-16,True,better on 148/179 decided users
+ml100k,multvae,popularity,exposure_parity,200,-0.19999999999999996,-0.30000000000000004,-0.19999999999999996,122,39,39,2347.5,1.6786318816216795e-12,1.0575380854216581e-10,True,better on 122/161 decided users
+ml100k,itemknn,popularity,exposure_parity,200,0.0,-0.09999999999999998,0.0,87,56,57,4278.5,0.07719432014843841,1.0,False,no detectable difference
+ml100k,gru4rec,popularity,ndcg,200,0.0,0.0,0.0,42,16,142,434.5,0.0011031015923645391,0.04302096210221703,True,better on 42/58 decided users
+ml100k,als,popularity,ndcg,200,0.0,0.0,0.0,29,17,154,461.0,0.3844020614793997,1.0,False,no detectable difference
+ml100k,als+quota_mmr,popularity,ndcg,200,0.0,0.0,0.0,19,19,162,357.5,0.8500284247982453,1.0,False,no detectable difference
+ml100k,gru4rec+quota_mmr,popularity,ndcg,200,0.0,0.0,0.0,23,20,157,393.5,0.3362114207354552,1.0,False,no detectable difference
+ml100k,itemknn,popularity,ndcg,200,0.0,0.0,0.0,16,12,172,185.5,0.689775164806135,1.0,False,no detectable difference
+ml100k,itemknn+quota_mmr,popularity,ndcg,200,0.0,0.0,0.0,22,16,162,353.5,0.8049358401180349,1.0,False,no detectable difference
+ml100k,multvae,popularity,ndcg,200,0.0,0.0,0.0,17,11,172,195.5,0.8642833544242068,1.0,False,no detectable difference
+ml100k,multvae+quota_mmr,popularity,ndcg,200,0.0,0.0,0.0,12,18,170,150.5,0.09105306571510487,1.0,False,no detectable difference
+ml100k,popularity+quota_mmr,popularity,ndcg,200,0.0,0.0,0.0,14,7,179,97.0,0.5196453156321181,1.0,False,no detectable difference
+ml100k,gru4rec,popularity,recall,200,0.0,0.0,0.0,37,11,152,269.5,0.0001748865925420931,0.007345236886767911,True,better on 37/48 decided users
+ml100k,als,popularity,recall,200,0.0,0.0,0.0,25,14,161,280.0,0.07816908582428345,1.0,False,no detectable difference
+ml100k,als+quota_mmr,popularity,recall,200,0.0,0.0,0.0,16,19,165,288.0,0.6120898800892568,1.0,False,no detectable difference
+ml100k,gru4rec+quota_mmr,popularity,recall,200,0.0,0.0,0.0,21,19,160,389.5,0.7518296340458492,1.0,False,no detectable difference
+ml100k,itemknn,popularity,recall,200,0.0,0.0,0.0,8,10,182,76.0,0.6373518882339371,1.0,False,no detectable difference
+ml100k,itemknn+quota_mmr,popularity,recall,200,0.0,0.0,0.0,17,16,167,272.0,0.8618044330490108,1.0,False,no detectable difference
+ml100k,multvae,popularity,recall,200,0.0,0.0,0.0,9,10,181,90.0,0.8185458083820434,1.0,False,no detectable difference
+ml100k,multvae+quota_mmr,popularity,recall,200,0.0,0.0,0.0,9,18,173,126.0,0.0832645166635504,1.0,False,no detectable difference
+ml100k,popularity+quota_mmr,popularity,recall,200,0.0,0.0,0.0,7,7,186,52.5,1.0,1.0,False,no detectable difference
+software,popularity+quota_mmr,popularity,exposure_parity,200,-1.0,-1.0,-1.0,200,0,0,0.0,2.0884875837625446e-45,1.816984197873414e-43,True,better on 200/200 decided users
+software,itemknn+quota_mmr,popularity,exposure_parity,200,-0.7,-0.7,-0.7,200,0,0,0.0,3.296645908217724e-38,2.8021490219850654e-36,True,better on 200/200 decided users
+software,als+quota_mmr,popularity,exposure_parity,200,-0.7,-0.8,-0.7,200,0,0,0.0,8.467058589247657e-37,6.688976285505649e-35,True,better on 200/200 decided users
+software,als,popularity,exposure_parity,200,-0.4,-0.4,-0.19999999999999996,165,17,18,876.0,8.379319881620612e-26,5.6141443206858104e-24,True,better on 165/182 decided users
+software,itemknn,popularity,exposure_parity,200,0.0,0.0,0.10000000000000009,85,95,20,8003.0,0.8386579540761889,1.0,False,no detectable difference
+software,itemknn+quota_mmr,popularity,ndcg,200,0.0,0.0,0.0,28,1,171,3.0,3.20217438812437e-06,0.0001601087194062185,True,better on 28/29 decided users
+software,itemknn,popularity,ndcg,200,0.0,0.0,0.0,28,1,171,4.0,3.6046651413635585e-06,0.0001730239267854508,True,better on 28/29 decided users
+software,als,popularity,ndcg,200,0.0,0.0,0.0,27,2,171,15.0,1.1214486046201848e-05,0.0005270808441714869,True,better on 27/29 decided users
+software,als+quota_mmr,popularity,ndcg,200,0.0,0.0,0.0,22,2,176,5.5,3.296703121968628e-05,0.0015164834361055689,True,better on 22/24 decided users
+software,popularity+quota_mmr,popularity,ndcg,200,0.0,0.0,0.0,2,1,197,3.0,1.0,1.0,False,no detectable difference
+software,itemknn,popularity,recall,200,0.0,0.0,0.0,28,1,171,15.0,5.337263600339065e-07,2.8287497081797045e-05,True,better on 28/29 decided users
+software,itemknn+quota_mmr,popularity,recall,200,0.0,0.0,0.0,28,1,171,15.0,5.337263600339065e-07,2.8287497081797045e-05,True,better on 28/29 decided users
+software,als,popularity,recall,200,0.0,0.0,0.0,27,2,171,30.0,3.4441291566632375e-06,0.00016876232867649862,True,better on 27/29 decided users
+software,als+quota_mmr,popularity,recall,200,0.0,0.0,0.0,22,2,176,25.0,4.4557090604056064e-05,0.0019605119865784668,True,better on 22/24 decided users
+software,popularity+quota_mmr,popularity,recall,200,0.0,0.0,0.0,1,1,198,1.5,1.0,1.0,False,no detectable difference
