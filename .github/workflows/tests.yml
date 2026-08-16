@@ -67,3 +67,28 @@ jobs:
       # backend installed. CI has none, so the run above already proves it; this asserts
       # it deliberately rather than by accident.
       - run: python -c "from green_rerank.measure import default_meter; print(default_meter())"
+
+  mutations:
+    # The check on the checks. Coverage says a line ran; this says that breaking it
+    # fails something. Runs once rather than across the matrix -- the mutations are
+    # about the code's invariants, not about a Python version.
+    #
+    # Only the mutations whose tests do not need the companion checkout, since it is
+    # private and cannot be cloned here. The rest run on the development machine.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: pip install -r requirements.txt
+      - name: list the mutations
+        run: python tests/mutations.py --list
+      - name: analysis and measurement invariants
+        run: |
+          for area in crossover bootstrap retraining domination agreement \
+                      throttling power-source below-quantum probe; do
+            python tests/mutations.py --filter "$area"
+          done
