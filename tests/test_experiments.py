@@ -770,6 +770,36 @@ class TestPairedComparison:
         )
         assert (table["n_users"] <= 200).all()
 
+    def test_every_repeat_is_tested_and_reported(self, tmp_path: Path):
+        """Four fifths of the accuracy evidence was being discarded silently.
+
+        `compare_all` kept `repeat.min()` alone. Re-running the study's headline
+        accuracy claim on all five samples gives p_holm = 0.043, 0.767, 1.000, 0.459,
+        1.000 -- significant in one, and the report quoted that one.
+
+        The output must therefore carry a row per repeat and a replication count, so a
+        result that holds in one sample of five cannot be read as a result.
+        """
+        from experiments.compare import compare_all
+
+        table = compare_all(
+            pd.read_csv(_per_user(tmp_path, n_users=120, repeats=4)), reference="itemknn"
+        )
+        assert "repeat" in table.columns
+        assert sorted(table.repeat.unique()) == [0, 1, 2, 3]
+        assert {"repeats_significant", "repeats_tested"} <= set(table.columns)
+        assert (table.repeats_tested == 4).all()
+
+    def test_a_result_holding_in_one_repeat_is_visible_as_such(self, tmp_path: Path):
+        """The replication count is the number the report was missing."""
+        from experiments.compare import compare_all
+
+        table = compare_all(
+            pd.read_csv(_per_user(tmp_path, n_users=120, repeats=4)), reference="itemknn"
+        )
+        row = table[table.metric == "ndcg"].iloc[0]
+        assert 0 <= row.repeats_significant <= row.repeats_tested
+
     def test_a_metric_only_one_side_computed_is_skipped(self, tmp_path: Path):
         """Intra-list similarity exists only for runs that built a similarity matrix.
 

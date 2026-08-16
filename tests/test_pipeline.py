@@ -379,13 +379,19 @@ class TestEndToEnd:
         Found by mutation testing: removing the re-sort left every existing test
         passing.
         """
+        # `lam=0.9`, and `mmr` rather than `quota_mmr`. At the study's lam=0.3 the
+        # solvers happen to return their selections already in relevance order, so the
+        # re-sort is a no-op and its removal is undetectable -- mutation testing caught
+        # exactly that after `lam` began being threaded through. A high diversity weight
+        # makes the solver genuinely reorder, which is the condition this guards.
         result = run_pipeline(
             dataset,
             build("itemknn"),
-            reranker="quota_mmr",
+            reranker="mmr",
             n_candidates=20,
             k=5,
             n_users=20,
+            lam=0.9,
         )
         family = build("itemknn").fit(dataset.train)
         rows = dataset.eval_users(20, seed=0)
@@ -572,5 +578,39 @@ class TestAuditInvariants:
         Asserted end-to-end rather than at the call site, because the defect was that
         the argument was never supplied at all.
         """
-        result = run_pipeline(dataset, build("popularity"), n_candidates=20, k=5, n_users=20)
-        assert result.metrics["exposure_parity"] > 0.0
+        # A catalogue whose candidates can only ever come from one group. Without the
+        # catalogue group count the target is k/1, the list meets it exactly, and the
+        # most concentrated recommendation possible scores 0.0 -- perfect.
+        from scipy import sparse
+
+        from green_rerank.data import Dataset
+        from green_rerank.families.base import Sequences
+
+        n_users, n_items = 40, 24
+        rows, cols = [], []
+        for user in range(n_users):
+            picks = [(user + j) % 8 for j in range(4)]  # only ever group 0
+            rows += [user] * len(picks)
+            cols += picks
+        matrix = sparse.csr_matrix(
+            (np.ones(len(rows)), (rows, cols)), shape=(n_users, n_items)
+        )
+        groups = np.repeat(np.arange(4), n_items // 4)  # catalogue has four groups
+        concentrated = Dataset(
+            name="concentrated",
+            train=matrix,
+            held_out={u: 8 + (u % 4) for u in range(n_users)},
+            groups=groups,
+            sequences=Sequences(
+                by_user={u: list(range(4)) for u in range(n_users)}, max_length=10
+            ),
+            item_ids=[str(i) for i in range(n_items)],
+            stats={"n_groups": 4},
+        )
+
+        result = run_pipeline(
+            concentrated, build("popularity"), n_candidates=8, k=4, n_users=20
+        )
+        # Every recommended item comes from group 0 of four, so parity must be far from
+        # perfect. Without n_groups this scores exactly 0.0.
+        assert result.metrics["exposure_parity"] > 1.0
