@@ -1,0 +1,43 @@
+# What does a quantum-inspired reranker cost in a pipeline?
+#
+# The main sweep costed one reranker, the classical quota-MMR. That leaves the study's
+# most direct connection to the supervising group's own direction unmeasured: the
+# companion project's contribution is a QUBO formulation of the fairness reranking
+# problem, and nobody has costed it against the classical alternative *inside a
+# pipeline* -- only against a fixed candidate set, where the question of what reranking
+# costs relative to everything around it cannot be asked.
+#
+# A preliminary run at 25 users found `qubo_feasible` costing ~257x greedy MMR while
+# scoring roughly three times its NDCG and improving parity. If that survives
+# measurement it is the sharpest cost/benefit statement this project can make, because
+# it is the one a deployer choosing between the two would actually want.
+#
+# `qubo_tabu` is included and must be read differently. It stops on a wall-clock
+# timeout, so its cost is roughly fixed by construction while its *quality* depends on
+# how much search the machine fitted into that window. Every row it produces is stamped
+# `time_bounded_reranker`. Its presence here is deliberate: a cost study that quietly
+# dropped it would be hiding the one method whose cost figure means something different
+# from all the others.
+name: rerankers
+catalogues: [ml100k]
+families: [popularity, itemknn, als]
+
+# All five, so the classical and QUBO families are measured under identical conditions
+# rather than compared across sweeps.
+rerankers: [null, greedy_topk, mmr, quota_mmr, qubo_feasible, qubo_tabu]
+
+# 100 rather than the main sweep's 200: the annealing rerankers cost ~0.32 CPU-seconds
+# per user, so 200 users x 3 families x 3 repeats x 2 QUBO methods is over an hour of
+# annealing alone. The comparison is between rerankers at a fixed user count, so halving
+# it costs nothing the claim depends on.
+n_users: 100
+n_candidates: 100
+k: 10
+repeats: 3
+
+lam: 0.3
+mu: 1.0
+
+family_kwargs:
+  als:
+    epochs: 15

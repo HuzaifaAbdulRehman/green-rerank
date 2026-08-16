@@ -1,0 +1,4 @@
+family,reranker,repeats,cpu_rerank_per_request,cpu_serving_per_request,rerank_share,ndcg,exposure_parity,recall,time_bounded,cost_vs_cheapest
+als,quota_mmr,5,0.0034375,0.0035511363636363635,0.9707620658688889,0.0762089810107514,0.2535,0.13,False,1.0
+itemknn,quota_mmr,5,0.00328125,0.0033776833631484794,0.9714498510427011,0.066609161595668,0.2725,0.12,False,1.0
+popularity,quota_mmr,5,0.002578125,0.0026678831254724105,0.9652811735941321,0.0045999728994467,0.0,0.01,False,1.0

@@ -43,6 +43,14 @@ Generated from `results\main`.
 | itemknn    | quota_mmr | 3.750e-01  | 3.880e-01         | 96.6%                   | 4.945e-04        | 29.8477            |
 | als        | quota_mmr | 4.219e-01  | 4.360e-01         | 96.8%                   | 5.315e-04        | 31.2212            |
 
+### rerankers
+
+| family     | reranker  | repeats | cpu_rerank_per_request | cpu_serving_per_request | rerank_share | ndcg   | exposure_parity | recall | time_bounded | cost_vs_cheapest |
+|------------|-----------|---------|------------------------|-------------------------|--------------|--------|-----------------|--------|--------------|------------------|
+| als        | quota_mmr | 5       | 2.109e-03              | 2.180e-03               | 96.8%        | 0.0546 | 0.2610          | 0.1300 | no           | 1.0000           |
+| itemknn    | quota_mmr | 5       | 1.875e-03              | 1.940e-03               | 96.6%        | 0.1123 | 0.2660          | 0.2100 | no           | 1.0000           |
+| popularity | quota_mmr | 5       | 1.797e-03              | 1.862e-03               | 96.1%        | 0.0525 | 0.2995          | 0.0900 | no           | 1.0000           |
+
 ### frontier
 
 | n_requests | frontier            | dominated                                                               | cheapest   | most_accurate |
@@ -118,6 +126,14 @@ Generated from `results\main`.
 | popularity | quota_mmr | 5.156e-01  | 5.336e-01         | 96.5%                   | 9.470e-03        | 28.8028            |
 | itemknn    | quota_mmr | 6.562e-01  | 6.755e-01         | 97.1%                   | 9.766e-03        | 35.0261            |
 | als        | quota_mmr | 6.875e-01  | 7.102e-01         | 97.1%                   | 9.470e-03        | 34.2021            |
+
+### rerankers
+
+| family     | reranker  | repeats | cpu_rerank_per_request | cpu_serving_per_request | rerank_share | ndcg   | exposure_parity | recall | time_bounded | cost_vs_cheapest |
+|------------|-----------|---------|------------------------|-------------------------|--------------|--------|-----------------|--------|--------------|------------------|
+| als        | quota_mmr | 5       | 3.438e-03              | 3.551e-03               | 97.1%        | 0.0762 | 0.2535          | 0.1300 | no           | 1.0000           |
+| itemknn    | quota_mmr | 5       | 3.281e-03              | 3.378e-03               | 97.1%        | 0.0666 | 0.2725          | 0.1200 | no           | 1.0000           |
+| popularity | quota_mmr | 5       | 2.578e-03              | 2.668e-03               | 96.5%        | 0.0046 | 0.0000          | 0.0100 | no           | 1.0000           |
 
 ### frontier
 
@@ -231,6 +247,16 @@ Generated from `results\main`.
 | multvae    | quota_mmr | 9.062e-01  | 1.056e+00         | 85.9%                   | 4.375e-01        | 7.1071             |
 | gru4rec    | quota_mmr | 1.078e+00  | 1.359e+00         | 82.5%                   | 6.250e-01        | 5.7250             |
 
+### rerankers
+
+| family     | reranker  | repeats | cpu_rerank_per_request | cpu_serving_per_request | rerank_share | ndcg   | exposure_parity | recall | time_bounded | cost_vs_cheapest |
+|------------|-----------|---------|------------------------|-------------------------|--------------|--------|-----------------|--------|--------------|------------------|
+| als        | quota_mmr | 5       | 3.125e-03              | 3.289e-03               | 95.6%        | 0.0471 | 0.2560          | 0.0950 | no           | 1.0000           |
+| gru4rec    | quota_mmr | 5       | 5.391e-03              | 6.797e-03               | 82.5%        | 0.0669 | 0.2605          | 0.1200 | no           | 1.0000           |
+| itemknn    | quota_mmr | 5       | 2.656e-03              | 2.835e-03               | 93.7%        | 0.0468 | 0.2465          | 0.0950 | no           | 1.0000           |
+| multvae    | quota_mmr | 5       | 4.531e-03              | 5.282e-03               | 85.9%        | 0.0411 | 0.2480          | 0.0850 | no           | 1.0000           |
+| popularity | quota_mmr | 5       | 2.578e-03              | 2.695e-03               | 95.9%        | 0.0539 | 0.2570          | 0.1050 | no           | 1.0000           |
+
 ### frontier
 
 | n_requests | frontier                                       | dominated                                                                                                      | cheapest   | most_accurate |
@@ -307,6 +333,14 @@ Generated from `results\main`.
 | itemknn    | quota_mmr | 6.875e-01  | 7.140e-01         | 96.3%                   | 3.646e-02        | 26.9875            |
 | als        | quota_mmr | 7.344e-01  | 7.668e-01         | 95.6%                   | 3.646e-02        | 22.4988            |
 
+### rerankers
+
+| family     | reranker  | repeats | cpu_rerank_per_request | cpu_serving_per_request | rerank_share | ndcg   | exposure_parity | recall | time_bounded | cost_vs_cheapest |
+|------------|-----------|---------|------------------------|-------------------------|--------------|--------|-----------------|--------|--------------|------------------|
+| als        | quota_mmr | 5       | 3.672e-03              | 3.834e-03               | 95.6%        | 0.1805 | 0.2685          | 0.2200 | no           | 1.0000           |
+| itemknn    | quota_mmr | 5       | 3.438e-03              | 3.570e-03               | 96.3%        | 0.2021 | 0.2670          | 0.2400 | no           | 1.0000           |
+| popularity | quota_mmr | 5       | 4.766e-03              | 4.877e-03               | 97.7%        | 0.0099 | 0.0000          | 0.0250 | no           | 1.0000           |
+
 ### frontier
 
 | n_requests | frontier                                  | dominated                                                   | cheapest   | most_accurate |
@@ -382,6 +416,14 @@ Generated from `results\main`.
 | popularity | quota_mmr | 1.297e+00  | 1.376e+00         | 94.3%                   | 1.562e-01        | 17.4271            |
 | itemknn    | quota_mmr | 7.188e-01  | 8.117e-01         | 88.5%                   | 1.562e-01        | 8.6875             |
 | als        | quota_mmr | 5.625e-01  | 6.927e-01         | 81.3%                   | 1.406e-01        | 5.3434             |
+
+### rerankers
+
+| family     | reranker  | repeats | cpu_rerank_per_request | cpu_serving_per_request | rerank_share | ndcg   | exposure_parity | recall | time_bounded | cost_vs_cheapest |
+|------------|-----------|---------|------------------------|-------------------------|--------------|--------|-----------------|--------|--------------|------------------|
+| als        | quota_mmr | 5       | 2.812e-03              | 3.464e-03               | 81.3%        | 0.0410 | 0.2798          | 0.0750 | no           | 1.0000           |
+| itemknn    | quota_mmr | 5       | 3.594e-03              | 4.059e-03               | 88.5%        | 0.0507 | 0.2650          | 0.0800 | no           | 1.0000           |
+| popularity | quota_mmr | 5       | 6.484e-03              | 6.879e-03               | 94.3%        | 0.0047 | 0.0000          | 0.0100 | no           | 1.0000           |
 
 ### frontier
 

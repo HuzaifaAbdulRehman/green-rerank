@@ -540,6 +540,76 @@ class TestAnalysis:
         # Serving cost more than doubled, which is the deployer-facing framing.
         assert (table["serving_multiplier"] > 2).all()
 
+    def test_rerankers_are_compared_against_the_cheapest_on_the_same_family(
+        self, tmp_path: Path
+    ):
+        """The 53926 question: what does a quantum-inspired reranker cost?
+
+        `cost_vs_cheapest` is normalised *within* a family, so the ratio is not
+        confounded by which retrieval model produced the candidates. Comparing across
+        families would attribute the retrieval model's cost to the reranker.
+        """
+        from experiments.analyse import reranker_comparison
+
+        rows = []
+        for repeat in range(3):
+            for reranker, rerank_cost in (("mmr", 1.0e-3), ("qubo_feasible", 2.5e-1)):
+                rows.append(
+                    {
+                        "dataset": "d", "family": "itemknn", "reranker": reranker,
+                        "repeat": repeat, "status": "ok", "trustworthy": True,
+                        "n_users": 100, "ndcg": 0.05, "recall": 0.1,
+                        "exposure_parity": 0.25, "n_candidates": 100,
+                        "cpu_retrieve_score": 1e-4, "cpu_retrieve_select": 1e-4,
+                        "cpu_rerank": rerank_cost,
+                    }
+                )
+        table = reranker_comparison(pd.DataFrame(rows))
+
+        cheapest = table[table.reranker == "mmr"].iloc[0]
+        dearest = table[table.reranker == "qubo_feasible"].iloc[0]
+        assert cheapest.cost_vs_cheapest == pytest.approx(1.0)
+        assert dearest.cost_vs_cheapest == pytest.approx(250.0)
+
+    def test_a_time_bounded_reranker_is_flagged_in_the_comparison(self, tmp_path: Path):
+        """Its cost is fixed by construction and its quality is what varied.
+
+        That inverts how every other row in the table should be read, so the flag has
+        to travel with the row rather than live in a footnote.
+        """
+        from experiments.analyse import reranker_comparison
+
+        rows = [
+            {
+                "dataset": "d", "family": "itemknn", "reranker": name, "repeat": r,
+                "status": "ok", "trustworthy": True, "n_users": 100, "ndcg": 0.05,
+                "recall": 0.1, "exposure_parity": 0.25, "n_candidates": 100,
+                "cpu_retrieve_score": 1e-4, "cpu_retrieve_select": 1e-4,
+                "cpu_rerank": 0.1,
+            }
+            for r in range(2)
+            for name in ("quota_mmr", "qubo_tabu")
+        ]
+        table = reranker_comparison(pd.DataFrame(rows))
+        flags = dict(zip(table.reranker, table.time_bounded, strict=True))
+        assert flags["qubo_tabu"] is True
+        assert flags["quota_mmr"] is False
+
+    def test_runs_without_a_reranker_are_excluded_from_the_comparison(self):
+        # The no-reranker baseline has no rerank cost, so including it would put a zero
+        # in the denominator of every ratio.
+        from experiments.analyse import reranker_comparison
+
+        rows = [
+            {
+                "dataset": "d", "family": "f", "reranker": "none", "repeat": 0,
+                "status": "ok", "trustworthy": True, "n_users": 10, "ndcg": 0.1,
+                "recall": 0.1, "exposure_parity": 0.5, "n_candidates": 100,
+                "cpu_retrieve_score": 1e-4, "cpu_retrieve_select": 1e-4, "cpu_rerank": 0.0,
+            }
+        ]
+        assert reranker_comparison(pd.DataFrame(rows)).empty
+
     def test_labels_distinguish_a_reranked_family_from_a_plain_one(self):
         assert label_of("als", "none") == "als"
         assert label_of("als", "quota_mmr") == "als+quota_mmr"
@@ -707,7 +777,15 @@ class TestReportingDrivers:
         directory = _runs(tmp_path, repeats=4)
         tables = analyse(directory)
 
-        expected = {"cost", "breakeven", "rerank_share", "frontier", "regimes", "retraining"}
+        expected = {
+            "cost",
+            "breakeven",
+            "rerank_share",
+            "rerankers",
+            "frontier",
+            "regimes",
+            "retraining",
+        }
         assert {key.split(".", 1)[1] for key in tables} == expected
         assert (directory / "tables" / "tables.md").exists()
         for key in tables:

@@ -34,6 +34,7 @@ from green_rerank.analysis import (
     retraining_table,
 )
 from green_rerank.pipeline import PER_REQUEST_STAGES, Stage
+from green_rerank.pipeline.rerankers import is_time_bounded
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -194,6 +195,58 @@ def rerank_share(frame: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def reranker_comparison(frame: pd.DataFrame) -> pd.DataFrame:
+    """Rerankers against each other at a fixed retrieval stage -- the 53926 question.
+
+    Every other table here compares model *families*. This one holds the family fixed
+    and varies the reranker, which is the comparison the companion project makes on
+    quality and could not make on cost: it measures the reranker against a pre-built
+    candidate set, so "what does this cost relative to the pipeline around it" has no
+    answer there.
+
+    ``cost_vs_cheapest`` is the column that matters. A quantum-inspired annealer being
+    two orders of magnitude dearer than greedy MMR is only a finding if it is stated
+    against something, and the cheapest reranker on the same rows is the honest
+    reference.
+
+    ``time_bounded`` travels with the row because those methods stop on wall-clock: the
+    cost is fixed by construction and the *quality* is what varied, which inverts how
+    every other row should be read.
+    """
+    reranked = frame[frame.reranker != "none"].copy()
+    if reranked.empty:
+        return pd.DataFrame()
+
+    labels = [s.label for s in PER_REQUEST_STAGES]
+    reranked["serving"] = reranked[[f"cpu_{x}" for x in labels]].sum(axis=1)
+
+    rows = []
+    for (family, reranker), group in reranked.groupby(["family", "reranker"], sort=False):
+        served = max(int(group["n_users"].median()), 1)
+        rows.append(
+            {
+                "family": family,
+                "reranker": reranker,
+                "repeats": len(group),
+                "cpu_rerank_per_request": group.cpu_rerank.median() / served,
+                "cpu_serving_per_request": group.serving.median() / served,
+                "rerank_share": (group.cpu_rerank / group.serving).median(),
+                "ndcg": group.ndcg.median(),
+                "exposure_parity": group.exposure_parity.median(),
+                "recall": group.recall.median(),
+                "time_bounded": is_time_bounded(str(reranker)),
+            }
+        )
+
+    table = pd.DataFrame(rows)
+    # Relative to the cheapest reranker on the same family, so the comparison is not
+    # confounded by which retrieval model produced the candidates.
+    table["cost_vs_cheapest"] = table.groupby("family").cpu_rerank_per_request.transform(
+        lambda column: column / column.min()
+    )
+    return table.sort_values(["family", "cpu_rerank_per_request"])
+
+
 def frontier_table(frame: pd.DataFrame, volumes: list[float] | None = None) -> pd.DataFrame:
     """Which configurations are worth deploying, at each traffic level.
 
@@ -309,6 +362,7 @@ def analyse(directory: Path, allow_untrustworthy: bool = False) -> dict[str, pd.
             ("cost", cost_table(frame)),
             ("breakeven", breakeven_table(frame)),
             ("rerank_share", rerank_share(frame)),
+            ("rerankers", reranker_comparison(frame)),
             ("frontier", frontier_table(frame)),
             ("regimes", regimes(frame)),
             ("retraining", retraining(frame)),
