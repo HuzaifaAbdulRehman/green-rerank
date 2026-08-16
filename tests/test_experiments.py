@@ -26,6 +26,7 @@ from experiments.sweep import (
     viability,
 )
 from green_rerank.data import synthetic
+from green_rerank.measure.guards import Preflight
 
 # --------------------------------------------------------------------------- config
 
@@ -218,6 +219,143 @@ class TestAppend:
         path = tmp_path / "readings.csv"
         _append(path, [{"stage": "train"}, {"stage": "rerank"}])
         assert list(pd.read_csv(path).stage) == ["train", "rerank"]
+
+
+@pytest.mark.needs_companion
+class TestSweepEndToEnd:
+    """The driver as a whole, on a synthetic catalogue.
+
+    Every unit above tests one decision. This tests that they compose: preflight runs,
+    the lock is taken, conditions are watched, cells execute in the planned order, each
+    output file is written after every cell rather than at the end, and the manifest
+    records what produced it.
+
+    The catalogue registry is redirected at a synthetic dataset, so this needs no
+    downloads and finishes in seconds -- which is what makes it a test rather than an
+    experiment.
+    """
+
+    @pytest.fixture
+    def patched(self, monkeypatch):
+        from experiments import sweep as sweep_module
+
+        dataset = synthetic(n_users=60, n_items=40, blocks=4, seed=0)
+        monkeypatch.setattr(sweep_module.catalogues, "load", lambda name, **kw: dataset)
+        # Preflight samples real machine load, and a test suite is itself load. The
+        # sweep's own behaviour under a busy machine is covered by TestConfig; here the
+        # point is the orchestration.
+        monkeypatch.setattr(sweep_module, "preflight", lambda **kw: Preflight(
+            power_source="ac", machine_busy_pct=1.0, exclusive=True
+        ))
+        return sweep_module
+
+    def _config(self, **overrides):
+        config = dict(
+            DEFAULTS,
+            name="test",
+            catalogues=["synthetic"],
+            families=["popularity"],
+            rerankers=[None],
+            n_users=20,
+            n_candidates=20,
+            k=5,
+            repeats=2,
+            min_users=10,
+            min_items=10,
+        )
+        config.update(overrides)
+        return config
+
+    def test_it_writes_every_output_file(self, patched, tmp_path):
+        frame = patched.run(self._config(), tmp_path)
+
+        assert len(frame) == 2
+        for name in ("runs.csv", "readings.csv", "per_user.csv", "manifest.json",
+                     "conditions.json"):
+            assert (tmp_path / name).exists(), f"{name} was not written"
+
+    def test_the_manifest_records_both_repositories_and_the_config(self, patched, tmp_path):
+        import json
+
+        patched.run(self._config(), tmp_path)
+        book = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+        assert {"green_rerank", "companion", "packages", "machine"} <= set(book)
+        assert book["config"]["repeats"] == 2
+        assert "clock_quantum_seconds" in book
+
+    def test_resume_skips_what_is_done_and_runs_the_rest(self, patched, tmp_path):
+        """The behaviour a long sweep depends on, asserted rather than assumed."""
+        patched.run(self._config(repeats=1), tmp_path)
+        first = pd.read_csv(tmp_path / "runs.csv")
+        assert len(first) == 1
+
+        # Same directory, one more repeat: the completed cell must not be re-measured.
+        patched.run(self._config(repeats=2), tmp_path, resume=True)
+        second = pd.read_csv(tmp_path / "runs.csv")
+        assert len(second) == 2
+        assert set(second.repeat) == {0, 1}
+
+    def test_fresh_discards_rather_than_appending(self, patched, tmp_path):
+        patched.run(self._config(repeats=2), tmp_path)
+        patched.run(self._config(repeats=1), tmp_path, resume=False)
+        assert len(pd.read_csv(tmp_path / "runs.csv")) == 1
+
+    def test_a_failing_family_is_recorded_and_does_not_stop_the_sweep(
+        self, patched, tmp_path, monkeypatch
+    ):
+        """A sweep that dies three catalogues in has wasted the runs that succeeded.
+
+        An absent row must always mean "not attempted" and never "attempted and quietly
+        dropped", so the failure lands in the table with its error.
+        """
+        real_build = patched.build
+
+        def build(name, **kwargs):
+            if name == "explode":
+                raise RuntimeError("synthetic failure")
+            return real_build(name, **kwargs)
+
+        monkeypatch.setattr(patched, "build", build)
+        frame = patched.run(self._config(families=["explode", "popularity"]), tmp_path)
+
+        assert len(frame) == 4
+        failed = frame[frame.status == "failed"]
+        assert len(failed) == 2
+        assert "synthetic failure" in failed.error.iloc[0]
+        assert (frame[frame.status == "ok"].family == "popularity").all()
+
+    def test_an_unviable_catalogue_is_skipped_and_recorded(self, patched, tmp_path, monkeypatch):
+        import json
+
+        tiny = synthetic(n_users=13, n_items=4, blocks=2, per_user=2)
+        monkeypatch.setattr(patched.catalogues, "load", lambda name, **kw: tiny)
+        frame = patched.run(self._config(), tmp_path)
+
+        assert frame.empty
+        book = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+        # Stated in the results directory rather than left as a gap someone must notice.
+        assert "synthetic" in book["skipped_catalogues"]
+
+    def test_per_user_rows_are_keyed_on_the_user_not_the_position(self, patched, tmp_path):
+        patched.run(self._config(repeats=1, n_users=20), tmp_path)
+        per_user = pd.read_csv(tmp_path / "per_user.csv")
+        assert len(per_user) == 20
+        assert "user_row" in per_user.columns
+        # Row indices from a 60-user dataset, so they cannot merely be 0..19.
+        assert per_user.user_row.max() >= 20
+
+    def test_conditions_are_watched_for_the_whole_run(self, patched, tmp_path):
+        import json
+
+        patched.run(self._config(), tmp_path)
+        conditions = json.loads((tmp_path / "conditions.json").read_text(encoding="utf-8"))
+        assert "conditions_changed" in conditions
+        assert "power_sources_seen" in conditions
+
+    def test_every_row_carries_its_trust_verdict(self, patched, tmp_path):
+        frame = patched.run(self._config(), tmp_path)
+        assert "trustworthy" in frame.columns
+        assert frame.trustworthy.notna().all()
 
 
 # ---------------------------------------------------------------------- viability
