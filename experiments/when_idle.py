@@ -25,9 +25,11 @@ from __future__ import annotations
 
 import argparse
 import shlex
+import shutil
 import subprocess
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 try:
     import psutil
@@ -120,6 +122,24 @@ def main() -> int:
         parser.error("no command given; put it after --")
     if psutil is None:
         parser.error("psutil is required to detect an idle machine")
+
+    # Resolve the executable before waiting, not after.
+    #
+    # Two reasons, and the second one cost a real measurement window. A relative path
+    # like `.venv/Scripts/python.exe` is resolved by the shell, not by CreateProcess, so
+    # subprocess raises FileNotFoundError on Windows -- and it raises it *after* the
+    # wait, which is the worst possible moment: this tool exists to catch a rare quiet
+    # window, and it spent forty minutes finding one and then failed to use it.
+    #
+    # Checking up front turns that into an error in the first second instead.
+    executable = Path(command[0])
+    if executable.exists():
+        command[0] = str(executable.resolve())
+    elif shutil.which(command[0]) is None:
+        parser.error(
+            f"cannot find {command[0]!r}. Give an absolute path or something on PATH -- "
+            "a relative path is resolved by the shell, and there is no shell here."
+        )
 
     print(f"waiting for the machine to fall below {args.idle_pct:.0f} % "
           f"for {args.consecutive} consecutive checks")
