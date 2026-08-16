@@ -1,0 +1,31 @@
+# Regeneration of the reranker comparison, with the baseline that decides it.
+#
+# Three differences from rerankers.yaml, each of which the audit showed was necessary
+# for the comparison to mean anything:
+#
+#   balanced_quota is included. QuotaMMR caps each group at ceil(k/|C|) with no lower
+#   bound and no remainder rule, so it finishes 3/3/3/1 over four groups -- parity 0.30
+#   against a floor of 0.20. Comparing the annealers only against that is comparing
+#   them against a defect. Largest-remainder apportionment reaches the floor by
+#   construction, and whether the QUBO still earns its cost against *it* is the open
+#   question this sweep exists to answer.
+#
+#   The annealers are seeded (rerankers.py::SOLVER_SEED), so repeats measure the
+#   machine rather than the solver's randomness.
+#
+#   lam reaches every solver that accepts it, so the classical and QUBO rerankers
+#   optimise the same objective. Previously the classical ones were pinned at 0.5 while
+#   the annealers read 0.3 from this file.
+name: rerankers_v2
+catalogues: [ml100k]
+families: [popularity, itemknn, als]
+rerankers: [null, greedy_topk, mmr, quota_mmr, balanced_quota, qubo_feasible, qubo_tabu]
+n_users: 100
+n_candidates: 100
+k: 10
+repeats: 3
+lam: 0.3
+mu: 1.0
+family_kwargs:
+  als:
+    epochs: 15
