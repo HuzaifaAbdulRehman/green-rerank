@@ -380,6 +380,49 @@ def crossover_interval(
     )
 
 
+def retraining_table(
+    lines: list[CostLine], intervals: list[float], n_requests: float
+) -> list[dict]:
+    """Which family is cheapest at a fixed traffic level, as retraining gets frequent.
+
+    The plain break-even assumes a model is trained once and serves forever. No
+    deployment does that: catalogues change, users arrive, and a stale model is
+    retrained on a cadence. Under retraining the once-cost recurs, so a family that won
+    purely by amortising an expensive training run over many requests loses that
+    advantage in proportion to how often it pays again.
+
+    ``intervals`` is in requests between retrains, and ``None`` in the list means "never
+    retrained" -- the baseline the rest is read against. The verdict can reverse across
+    this table, which is the finding: the cheapest family is a function not only of
+    traffic volume but of how fast the data goes stale, and neither appears in a
+    per-run energy figure.
+    """
+    rows = []
+    for interval in intervals:
+        if interval is None:
+            costs = {line.label: line.at(n_requests) for line in lines}
+            label = "never"
+        else:
+            costs = {line.label: line.with_retraining(interval).at(n_requests) for line in lines}
+            label = f"{interval:,.0f}"
+        cheapest = min(costs, key=lambda k: costs[k])
+        rows.append(
+            {
+                "retrain_every": label,
+                "n_requests": n_requests,
+                "cheapest": cheapest,
+                # How many training events were actually paid. Reported because the
+                # staircase's height is the whole mechanism, and a reader checking the
+                # arithmetic cannot recover it from the totals.
+                "training_events": (
+                    1 if interval is None else 1 + math.floor(n_requests / interval)
+                ),
+                **{f"cost.{label_}": value for label_, value in costs.items()},
+            }
+        )
+    return rows
+
+
 def cheapest_at(lines: list[CostLine], n_requests: float) -> CostLine:
     """Which family costs least at a given traffic level."""
     if not lines:

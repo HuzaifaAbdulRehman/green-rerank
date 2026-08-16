@@ -16,6 +16,7 @@ from green_rerank.analysis.breakeven import (
     crossover,
     crossover_interval,
     regime_table,
+    retraining_table,
 )
 from green_rerank.analysis.frontier import (
     Point,
@@ -46,4 +47,5 @@ __all__ = [
     "frontier",
     "frontier_at",
     "regime_table",
+    "retraining_table",
 ]

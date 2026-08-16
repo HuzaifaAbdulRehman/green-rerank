@@ -23,6 +23,7 @@ from green_rerank.analysis import (
     frontier,
     frontier_at,
     regime_table,
+    retraining_table,
 )
 from green_rerank.analysis.validity import energy_axis_report
 from green_rerank.measure import Reading
@@ -231,6 +232,64 @@ class TestRetraining:
     def test_zero_interval_is_rejected(self):
         with pytest.raises(ValueError, match="positive"):
             CostLine("a", once=1.0, per_request=1.0).with_retraining(every=0)
+
+
+class TestRetrainingTable:
+    """The cadence axis, which a per-run energy figure cannot express at all."""
+
+    @staticmethod
+    def _lines():
+        # Cheap to train, costly to serve -- against the opposite.
+        return [
+            CostLine("knn", once=1.0, per_request=1e-3),
+            CostLine("als", once=100.0, per_request=1e-4),
+        ]
+
+    def test_the_verdict_reverses_as_retraining_gets_frequent(self):
+        """The finding this table exists to show, with the arithmetic done by hand.
+
+        The two lines cross at (100 - 1) / (1e-3 - 1e-4) = 110,000 requests, so the
+        horizon has to be beyond that for ALS to be winning in the first place. At one
+        million requests, trained once: knn pays 1 + 1,000 = 1,001, ALS pays
+        100 + 100 = 200, so ALS wins.
+
+        Retrained every 1,000 requests ALS pays its 100 a thousand times over --
+        100,200 against knn's 2,001 -- and the verdict inverts without a single measured
+        cost changing.
+
+        (An earlier version of this test used a 100,000-request horizon and asserted ALS
+        won there. It does not: 101 against 110. The code was right and the test was
+        wrong, which is the usual way round.)
+        """
+        rows = retraining_table(self._lines(), [None, 1_000], n_requests=1_000_000)
+        assert rows[0]["cheapest"] == "als"
+        assert rows[0]["cost.als"] == pytest.approx(200.0)
+        assert rows[1]["cheapest"] == "knn"
+        assert rows[1]["cost.als"] == pytest.approx(100_200.0)
+
+    def test_training_events_are_counted_not_smoothed(self):
+        # Training happens in whole events. A smoothed average would understate cost
+        # immediately after each retrain, which is when a deployment notices.
+        rows = retraining_table(self._lines(), [10_000], n_requests=100_000)
+        assert rows[0]["training_events"] == 11  # one up front, then ten more
+
+    def test_never_retraining_matches_the_plain_line(self):
+        lines = self._lines()
+        rows = retraining_table(lines, [None], n_requests=5_000)
+        assert rows[0]["training_events"] == 1
+        for line in lines:
+            assert rows[0][f"cost.{line.label}"] == pytest.approx(line.at(5_000))
+
+    def test_every_line_appears_in_every_row(self):
+        # A family silently missing from one row would look like it was not an option
+        # at that cadence, rather than like it lost.
+        rows = retraining_table(self._lines(), [None, 100, 10], n_requests=1_000)
+        for row in rows:
+            assert {"cost.knn", "cost.als"} <= set(row)
+
+    def test_a_non_positive_interval_is_refused(self):
+        with pytest.raises(ValueError, match="must be positive"):
+            retraining_table(self._lines(), [0], n_requests=100)
 
 
 class TestRegimes:

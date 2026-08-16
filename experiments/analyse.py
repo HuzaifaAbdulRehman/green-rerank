@@ -31,6 +31,7 @@ from green_rerank.analysis import (
     dominated,
     frontier,
     regime_table,
+    retraining_table,
 )
 from green_rerank.pipeline import PER_REQUEST_STAGES, Stage
 
@@ -40,6 +41,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 #: claim is that the answer changes with volume -- a table over a narrow range would show
 #: one winner and imply the question was not worth asking.
 VOLUMES = [1, 10, 100, 1_000, 10_000, 100_000, 1_000_000]
+
+#: Retraining cadences, in requests between retrains. ``None`` is "trained once and
+#: served forever" -- the assumption the plain break-even makes and no deployment
+#: honours -- and is kept first as the baseline the rest is read against.
+RETRAIN_INTERVALS = [None, 1_000_000, 100_000, 10_000, 1_000, 100]
 
 
 def load_runs(directory: Path, allow_untrustworthy: bool = False) -> pd.DataFrame:
@@ -215,6 +221,18 @@ def regimes(frame: pd.DataFrame, volumes: list[float] | None = None) -> pd.DataF
     return pd.DataFrame(regime_table(lines, volumes or VOLUMES))
 
 
+def retraining(frame: pd.DataFrame, n_requests: float = 100_000) -> pd.DataFrame:
+    """How the verdict shifts as the model is retrained more often.
+
+    Evaluated at one traffic level so the only thing varying is cadence. A family that
+    wins by amortising expensive training over many requests pays that cost again on
+    every retrain, and the winner can change part-way down this table -- which is the
+    point, and is invisible in any figure reporting energy per run.
+    """
+    lines = [s.line() for s in cost_samples(frame)]
+    return pd.DataFrame(retraining_table(lines, RETRAIN_INTERVALS, n_requests))
+
+
 def _cell(column: str, value: Any) -> str:
     """Format one value for a report table.
 
@@ -281,6 +299,7 @@ def analyse(directory: Path, allow_untrustworthy: bool = False) -> dict[str, pd.
             ("rerank_share", rerank_share(frame)),
             ("frontier", frontier_table(frame)),
             ("regimes", regimes(frame)),
+            ("retraining", retraining(frame)),
         ):
             key = f"{catalogue}.{name}"
             produced[key] = table
