@@ -300,6 +300,35 @@ class TestSweepEndToEnd:
         patched.run(self._config(repeats=1), tmp_path, resume=False)
         assert len(pd.read_csv(tmp_path / "runs.csv")) == 1
 
+    def test_fresh_clears_every_appended_file_not_just_the_named_two(
+        self, patched, tmp_path
+    ):
+        """The bug this guards produced comparisons on invented data.
+
+        ``--fresh`` cleared runs.csv and readings.csv but not per_user.csv, which was
+        added later. A killed sweep's per-user rows therefore survived and the next run
+        appended to them, so the cost tables were clean -- their file *was* cleared --
+        while every paired accuracy test silently ran on a multiple of the rows it
+        should have, pairing users against duplicated copies of themselves.
+
+        Asserted over the whole list rather than per file, so a file added in future is
+        covered by this test the moment it is added to APPENDED_FILES.
+        """
+        patched.run(self._config(repeats=2), tmp_path)
+        before = {name: len(pd.read_csv(tmp_path / name)) for name in patched.APPENDED_FILES}
+        assert all(count > 0 for count in before.values())
+
+        patched.run(self._config(repeats=1), tmp_path, resume=False)
+
+        for name in patched.APPENDED_FILES:
+            after = pd.read_csv(tmp_path / name)
+            assert len(after) < before[name], f"{name} was not cleared by --fresh"
+
+        # And the specific consequence: one row per user per configuration.
+        per_user = pd.read_csv(tmp_path / "per_user.csv")
+        counts = per_user.groupby(["dataset", "family", "reranker", "repeat"]).user_row
+        assert not counts.apply(lambda c: c.duplicated().any()).any()
+
     def test_a_failing_family_is_recorded_and_does_not_stop_the_sweep(
         self, patched, tmp_path, monkeypatch
     ):
@@ -738,6 +767,22 @@ class TestPairedComparison:
         table = compare_all(pd.read_csv(_per_user(tmp_path)), reference="itemknn")
         row = table[table.metric == "exposure_parity"].iloc[0]
         assert row["worse"] > row["better"]
+
+    def test_duplicate_users_are_refused_rather_than_cross_joined(self, tmp_path: Path):
+        """The second half of the same defect, caught at the reading end.
+
+        Even with the writer fixed, a results directory assembled by hand or written by
+        two sweeps can contain a user twice within one configuration. The merge would
+        become a cross join and every count would be a multiple of the truth, with
+        plausible medians and real p-values computed on invented rows.
+        """
+        from experiments.compare import compare_all
+
+        frame = pd.read_csv(_per_user(tmp_path, n_users=50, repeats=1))
+        doubled = pd.concat([frame, frame], ignore_index=True)
+
+        with pytest.raises(SystemExit, match="duplicate users"):
+            compare_all(doubled, reference="itemknn")
 
     def test_an_unknown_reference_lists_the_available_ones(self, tmp_path: Path):
         from experiments.compare import compare_all

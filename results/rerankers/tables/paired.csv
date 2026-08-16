@@ -1,0 +1,52 @@
+dataset,config,reference,metric,n_users,median_diff,ci_lo,ci_hi,better,worse,tied,statistic,p_raw,p_holm,significant,verdict
+ml100k,als+qubo_feasible,itemknn,exposure_parity,400,-0.9000000000000001,-0.9000000000000001,-0.9000000000000001,400,0,0,0.0,1.7178824459522942e-68,8.7612004743567e-67,True,better on 400/400 decided users
+ml100k,itemknn+qubo_feasible,itemknn,exposure_parity,400,-0.9000000000000001,-0.9000000000000001,-0.9000000000000001,400,0,0,0.0,1.7178824459522942e-68,8.7612004743567e-67,True,better on 400/400 decided users
+ml100k,itemknn+qubo_tabu,itemknn,exposure_parity,400,-0.9000000000000001,-0.9000000000000001,-0.9000000000000001,400,0,0,0.0,1.7178824459522942e-68,8.7612004743567e-67,True,better on 400/400 decided users
+ml100k,popularity+qubo_feasible,itemknn,exposure_parity,400,-0.9000000000000001,-0.9000000000000001,-0.9000000000000001,400,0,0,0.0,1.7178824459522942e-68,8.7612004743567e-67,True,better on 400/400 decided users
+ml100k,popularity+qubo_tabu,itemknn,exposure_parity,400,-0.9000000000000001,-0.9000000000000001,-0.9000000000000001,400,0,0,0.0,1.7178824459522942e-68,8.7612004743567e-67,True,better on 400/400 decided users
+ml100k,popularity+quota_mmr,itemknn,exposure_parity,400,-0.9000000000000001,-0.9000000000000001,-0.8,400,0,0,0.0,9.523223242707305e-68,4.38068269164536e-66,True,better on 400/400 decided users
+ml100k,itemknn+quota_mmr,itemknn,exposure_parity,400,-0.9000000000000001,-0.9000000000000001,-0.9000000000000001,400,0,0,0.0,1.2584604506544617e-67,5.663072027945078e-66,True,better on 400/400 decided users
+ml100k,als+quota_mmr,itemknn,exposure_parity,400,-0.9000000000000001,-0.9000000000000001,-0.9000000000000001,400,0,0,0.0,1.3326865367445845e-67,5.863820761676171e-66,True,better on 400/400 decided users
+ml100k,als+mmr,itemknn,exposure_parity,400,-0.40000000000000013,-0.5,-0.40000000000000013,344,28,28,1734.0,7.718762425003025e-57,3.3190678427513004e-55,True,better on 344/372 decided users
+ml100k,als,itemknn,exposure_parity,400,-0.35,-0.3999999999999999,-0.20000000000000007,304,36,60,3378.0,2.5373026238428526e-45,1.0656671020139981e-43,True,better on 304/340 decided users
+ml100k,als+greedy_topk,itemknn,exposure_parity,400,-0.35,-0.3999999999999999,-0.20000000000000007,304,36,60,3378.0,2.5373026238428526e-45,1.0656671020139981e-43,True,better on 304/340 decided users
+ml100k,popularity+mmr,itemknn,exposure_parity,400,-0.20000000000000007,-0.20000000000000007,-0.19999999999999996,272,56,72,5580.0,7.502132159367277e-36,3.0008528637469106e-34,True,better on 272/328 decided users
+ml100k,als+qubo_tabu,itemknn,exposure_parity,200,-0.9000000000000001,-1.0,-0.9000000000000001,200,0,0,0.0,3.6006206463827376e-35,1.4042420520892677e-33,True,better on 200/200 decided users
+ml100k,itemknn+mmr,itemknn,exposure_parity,400,0.0,-0.09999999999999998,0.0,184,60,156,5030.0,1.385981543309471e-19,5.26672986457599e-18,True,better on 184/244 decided users
+ml100k,itemknn+greedy_topk,itemknn,exposure_parity,400,0.0,0.0,0.0,0,0,400,,1.0,1.0,False,no detectable difference
+ml100k,popularity,itemknn,exposure_parity,400,0.0,0.0,0.0,136,160,104,19100.0,0.04626050504715089,1.0,False,no detectable difference
+ml100k,popularity+greedy_topk,itemknn,exposure_parity,400,0.0,0.0,0.0,136,160,104,19100.0,0.04626050504715089,1.0,False,no detectable difference
+ml100k,itemknn+mmr,itemknn,ndcg,400,0.0,0.0,0.0,44,0,356,0.0,6.969709978549574e-09,2.5787926920633423e-07,True,better on 44/44 decided users
+ml100k,als,itemknn,ndcg,400,0.0,0.0,0.0,52,28,320,1158.0,0.026349233730738303,0.869524713114364,False,no detectable difference
+ml100k,als+greedy_topk,itemknn,ndcg,400,0.0,0.0,0.0,52,28,320,1158.0,0.026349233730738303,0.869524713114364,False,no detectable difference
+ml100k,als+mmr,itemknn,ndcg,400,0.0,0.0,0.0,52,28,320,1158.0,0.026418794302295465,0.869524713114364,False,no detectable difference
+ml100k,als+qubo_feasible,itemknn,ndcg,400,0.0,0.0,0.0,42,28,330,922.0,0.05981450630427913,1.0,False,no detectable difference
+ml100k,als+qubo_tabu,itemknn,ndcg,200,0.0,0.0,0.0,20,14,166,229.0,0.24037366817852113,1.0,False,no detectable difference
+ml100k,als+quota_mmr,itemknn,ndcg,400,0.0,0.0,0.0,44,28,328,990.0,0.06834227203797928,1.0,False,no detectable difference
+ml100k,itemknn+greedy_topk,itemknn,ndcg,400,0.0,0.0,0.0,0,0,400,,1.0,1.0,False,no detectable difference
+ml100k,itemknn+qubo_feasible,itemknn,ndcg,400,0.0,0.0,0.0,22,30,348,535.0,0.1597293681958456,1.0,False,no detectable difference
+ml100k,itemknn+qubo_tabu,itemknn,ndcg,400,0.0,0.0,0.0,42,18,340,691.0,0.09859159446918599,1.0,False,no detectable difference
+ml100k,itemknn+quota_mmr,itemknn,ndcg,400,0.0,0.0,0.0,24,12,364,206.0,0.045072218311276065,1.0,False,no detectable difference
+ml100k,popularity,itemknn,ndcg,400,0.0,0.0,0.0,20,20,360,394.0,0.8294085957886534,1.0,False,no detectable difference
+ml100k,popularity+greedy_topk,itemknn,ndcg,400,0.0,0.0,0.0,20,20,360,394.0,0.8294085957886534,1.0,False,no detectable difference
+ml100k,popularity+mmr,itemknn,ndcg,400,0.0,0.0,0.0,28,20,352,554.0,0.7267589404839983,1.0,False,no detectable difference
+ml100k,popularity+qubo_feasible,itemknn,ndcg,400,0.0,0.0,0.0,18,28,354,387.0,0.09310554899558507,1.0,False,no detectable difference
+ml100k,popularity+qubo_tabu,itemknn,ndcg,400,0.0,0.0,0.0,24,20,356,486.0,0.9162667915858025,1.0,False,no detectable difference
+ml100k,popularity+quota_mmr,itemknn,ndcg,400,0.0,0.0,0.0,28,20,352,558.0,0.7576331450547598,1.0,False,no detectable difference
+ml100k,itemknn+mmr,itemknn,recall,400,0.0,0.0,0.0,24,0,376,0.0,9.633570086430965e-07,3.468085231115147e-05,True,better on 24/24 decided users
+ml100k,als,itemknn,recall,400,0.0,0.0,0.0,44,24,332,828.0,0.015293371030198965,0.5352679860569638,False,no detectable difference
+ml100k,als+greedy_topk,itemknn,recall,400,0.0,0.0,0.0,44,24,332,828.0,0.015293371030198965,0.5352679860569638,False,no detectable difference
+ml100k,als+mmr,itemknn,recall,400,0.0,0.0,0.0,44,28,328,1022.0,0.05934643879191985,1.0,False,no detectable difference
+ml100k,als+qubo_feasible,itemknn,recall,400,0.0,0.0,0.0,34,28,338,882.0,0.446059549370744,1.0,False,no detectable difference
+ml100k,als+qubo_tabu,itemknn,recall,200,0.0,0.0,0.0,16,14,170,217.0,0.7150006546880892,1.0,False,no detectable difference
+ml100k,als+quota_mmr,itemknn,recall,400,0.0,0.0,0.0,36,28,336,910.0,0.31731050786291415,1.0,False,no detectable difference
+ml100k,itemknn+greedy_topk,itemknn,recall,400,0.0,0.0,0.0,0,0,400,,1.0,1.0,False,no detectable difference
+ml100k,itemknn+qubo_feasible,itemknn,recall,400,0.0,0.0,0.0,16,30,354,376.0,0.03899995301244552,1.0,False,no detectable difference
+ml100k,itemknn+qubo_tabu,itemknn,recall,400,0.0,0.0,0.0,24,18,358,387.0,0.3545394797735013,1.0,False,no detectable difference
+ml100k,itemknn+quota_mmr,itemknn,recall,400,0.0,0.0,0.0,16,12,372,174.0,0.4496917979688909,1.0,False,no detectable difference
+ml100k,popularity,itemknn,recall,400,0.0,0.0,0.0,16,16,368,264.0,1.0,1.0,False,no detectable difference
+ml100k,popularity+greedy_topk,itemknn,recall,400,0.0,0.0,0.0,16,16,368,264.0,1.0,1.0,False,no detectable difference
+ml100k,popularity+mmr,itemknn,recall,400,0.0,0.0,0.0,24,20,356,450.0,0.5464935954065822,1.0,False,no detectable difference
+ml100k,popularity+qubo_feasible,itemknn,recall,400,0.0,0.0,0.0,14,26,360,287.0,0.057779571123597245,1.0,False,no detectable difference
+ml100k,popularity+qubo_tabu,itemknn,recall,400,0.0,0.0,0.0,12,18,370,186.0,0.27332167829229814,1.0,False,no detectable difference
+ml100k,popularity+quota_mmr,itemknn,recall,400,0.0,0.0,0.0,20,20,360,410.0,1.0,1.0,False,no detectable difference

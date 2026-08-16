@@ -156,6 +156,26 @@ def compare_all(
     first = per_user["repeat"].min()
     per_user = per_user[per_user["repeat"] == first]
 
+    # A user must appear at most once per configuration, or the merge below becomes a
+    # cross join and every comparison silently runs on a multiple of the rows it should.
+    #
+    # This is not hypothetical: a sweep re-run with --fresh once left a killed run's
+    # per-user rows in place and appended to them, and the resulting comparisons
+    # reported win/loss/tie counts summing to four times the user count. Nothing else
+    # in the output looked wrong -- the medians were plausible and the p-values were
+    # real numbers computed on invented data.
+    duplicated = per_user.groupby(["dataset", "config"]).user_row.apply(
+        lambda column: int(column.duplicated().sum())
+    )
+    if duplicated.any():
+        worst = duplicated.idxmax()
+        raise SystemExit(
+            f"per_user.csv has duplicate users within a configuration -- "
+            f"{duplicated.max()} in {worst}. A pairing built from this would compare "
+            "users against copies of themselves. The usual cause is a results directory "
+            "written by two sweeps; re-run the sweep with --fresh."
+        )
+
     rows = []
     for catalogue, frame in per_user.groupby("dataset", sort=False):
         reference_rows = frame[frame["config"] == reference]

@@ -206,6 +206,13 @@ def _completed(path: Path) -> set[tuple[str, str, str, int]]:
     }
 
 
+#: Every file a sweep appends to. Listed in one place because ``--fresh`` has to clear
+#: all of them: a partial file left behind is appended to by the next run, and the
+#: result is a table with the right column names, plausible values, and rows from two
+#: different sweeps in it.
+APPENDED_FILES = ("runs.csv", "readings.csv", "per_user.csv")
+
+
 def run(config: dict[str, Any], out_dir: Path, resume: bool = True) -> pd.DataFrame:
     """Execute the grid and write ``runs.csv``, ``readings.csv`` and ``manifest.json``."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -213,9 +220,19 @@ def run(config: dict[str, Any], out_dir: Path, resume: bool = True) -> pd.DataFr
     readings_path = out_dir / "readings.csv"
 
     done = _completed(runs_path) if resume else set()
-    if not resume and runs_path.exists():
-        runs_path.unlink()
-        readings_path.unlink(missing_ok=True)
+    if not resume:
+        # All of them, not just the two that used to be named here.
+        #
+        # `per_user.csv` was omitted when it was added, so `--fresh` left a killed
+        # sweep's per-user rows in place and the next run appended to them. The cost
+        # tables were clean, because their file *was* cleared; only the paired accuracy
+        # tests were wrong, and they were wrong in the least visible way -- the merge
+        # paired users against duplicated copies of themselves, so every comparison ran
+        # on four times the rows it should have and reported ties it had invented.
+        #
+        # Found because a win/loss/tie count summed to 400 where the config said 100.
+        for name in APPENDED_FILES:
+            (out_dir / name).unlink(missing_ok=True)
 
     with ExclusiveLock(out_dir / ".measure.lock") as lock:
         checks = preflight(
