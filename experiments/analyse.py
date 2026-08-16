@@ -160,23 +160,35 @@ def rerank_share(frame: pd.DataFrame) -> pd.DataFrame:
     for (family, reranker), group in frame.groupby(["family", "reranker"], sort=False):
         if reranker in ("none", "", None):
             continue
-        serving = sum(group[f"cpu_{label}"].median() for label in per_request_labels)
-        rerank = group[f"cpu_{Stage.RERANK.label}"].median()
-        setup = group[f"cpu_{Stage.RERANK_SETUP.label}"].median()
+
+        # The share is computed per run and then taken as a median -- not as a ratio of
+        # two medians. The distinction is not pedantry: the two disagree by 2.7
+        # percentage points for GRU4Rec, which is the endpoint of the range this study
+        # quotes, and an earlier draft had the report's table using one statistic and
+        # its summary sentence the other.
+        #
+        # Median of ratios is the right one. Each run is an observation *of the share*,
+        # so the median of those observations estimates it directly; a ratio of medians
+        # is a ratio of two separately-summarised quantities and has no such reading
+        # when the numerator and denominator are distributed differently, which they
+        # are whenever training or retrieval is much noisier than reranking.
+        serving = group[[f"cpu_{label}" for label in per_request_labels]].sum(axis=1)
+        rerank = group[f"cpu_{Stage.RERANK.label}"]
+        share = (rerank / serving).median()
+        multiplier = (serving / (serving - rerank)).median()
+
         rows.append(
             {
                 "family": family,
                 "reranker": reranker,
-                "cpu_rerank": rerank,
-                "cpu_serving_total": serving,
-                "rerank_share_of_serving": rerank / serving if serving > 0 else float("nan"),
-                "cpu_rerank_setup": setup,
+                "cpu_rerank": rerank.median(),
+                "cpu_serving_total": serving.median(),
+                "rerank_share_of_serving": share,
+                "cpu_rerank_setup": group[f"cpu_{Stage.RERANK_SETUP.label}"].median(),
                 # How much more expensive serving became. The honest framing of the
                 # cost: a deployer is not choosing whether to pay for reranking in the
                 # abstract, they are choosing to multiply their serving cost.
-                "serving_multiplier": (
-                    serving / (serving - rerank) if serving > rerank else float("inf")
-                ),
+                "serving_multiplier": multiplier,
             }
         )
     return pd.DataFrame(rows)

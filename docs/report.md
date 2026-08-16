@@ -389,17 +389,29 @@ question even has an answer.
 5.3× to 43.8×.** Measured across all five catalogues and every family, 17 configurations
 in total.
 
+All seventeen configurations, highest share first. The share is computed per run and
+then taken as a median, not as a ratio of two medians -- the two disagree by 2.7
+percentage points at the low end, which is the endpoint this study quotes.
+
 | catalogue | family | rerank share | serving multiplier |
 |-----------|--------|--------------|--------------------|
 | `luxury_beauty` | `popularity` | 97.7 % | 43.8× |
-| `software` | `itemknn` | 97.1 % | 34.2× |
-| `gift_cards` | `als` | 96.8 % | 30.9× |
-| `ml100k` | `popularity` | 95.8 % | 24.0× |
+| `software` | `itemknn` | 97.1 % | 35.0× |
+| `software` | `als` | 97.1 % | 34.2× |
+| `gift_cards` | `als` | 96.8 % | 31.2× |
+| `gift_cards` | `itemknn` | 96.6 % | 29.8× |
+| `software` | `popularity` | 96.5 % | 28.8× |
+| `luxury_beauty` | `itemknn` | 96.3 % | 27.0× |
+| `gift_cards` | `popularity` | 96.1 % | 25.8× |
+| `ml100k` | `popularity` | 95.9 % | 24.3× |
+| `ml100k` | `als` | 95.6 % | 22.6× |
+| `luxury_beauty` | `als` | 95.6 % | 22.5× |
+| `digital_music` | `popularity` | 94.3 % | 17.4× |
 | `ml100k` | `itemknn` | 93.7 % | 15.8× |
 | `digital_music` | `itemknn` | 88.5 % | 8.7× |
-| `ml100k` | `multvae` | 86.1 % | 7.2× |
-| `digital_music` | `als` | 80.6 % | 5.2× |
-| `ml100k` | `gru4rec` | 79.8 % | 4.9× |
+| `ml100k` | `multvae` | 85.9 % | 7.1× |
+| `ml100k` | `gru4rec` | 82.5 % | 5.7× |
+| `digital_music` | `als` | 81.3 % | 5.3× |
 
 One caveat the row-level records make visible. `gift_cards` has 147 items, so the cap of
 §4.4 bound there and its runs used a retrieval depth of 117–126 rather than the nominal

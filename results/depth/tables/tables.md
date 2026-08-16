@@ -39,9 +39,9 @@ Generated from `results\depth`.
 
 | family     | reranker  | cpu_rerank | cpu_serving_total | rerank_share_of_serving | cpu_rerank_setup | serving_multiplier |
 |------------|-----------|------------|-------------------|-------------------------|------------------|--------------------|
-| popularity | quota_mmr | 5.000e-01  | 5.218e-01         | 95.8%                   | 8.594e-02        | 23.9517            |
-| itemknn    | quota_mmr | 5.312e-01  | 5.671e-01         | 93.7%                   | 8.984e-02        | 15.8364            |
-| als        | quota_mmr | 6.094e-01  | 6.378e-01         | 95.5%                   | 8.984e-02        | 22.4094            |
+| popularity | quota_mmr | 5.000e-01  | 5.228e-01         | 95.8%                   | 8.594e-02        | 23.9517            |
+| itemknn    | quota_mmr | 5.312e-01  | 5.687e-01         | 93.7%                   | 8.984e-02        | 15.8364            |
+| als        | quota_mmr | 6.094e-01  | 6.385e-01         | 95.4%                   | 8.984e-02        | 21.8989            |
 
 ### frontier
 

@@ -39,9 +39,9 @@ Generated from `results\main`.
 
 | family     | reranker  | cpu_rerank | cpu_serving_total | rerank_share_of_serving | cpu_rerank_setup | serving_multiplier |
 |------------|-----------|------------|-------------------|-------------------------|------------------|--------------------|
-| popularity | quota_mmr | 3.594e-01  | 3.722e-01         | 96.5%                   | 4.937e-04        | 28.9217            |
+| popularity | quota_mmr | 3.594e-01  | 3.724e-01         | 96.1%                   | 4.937e-04        | 25.7775            |
 | itemknn    | quota_mmr | 3.750e-01  | 3.880e-01         | 96.6%                   | 4.945e-04        | 29.8477            |
-| als        | quota_mmr | 4.219e-01  | 4.360e-01         | 96.8%                   | 5.315e-04        | 30.9325            |
+| als        | quota_mmr | 4.219e-01  | 4.360e-01         | 96.8%                   | 5.315e-04        | 31.2212            |
 
 ### frontier
 
@@ -115,9 +115,9 @@ Generated from `results\main`.
 
 | family     | reranker  | cpu_rerank | cpu_serving_total | rerank_share_of_serving | cpu_rerank_setup | serving_multiplier |
 |------------|-----------|------------|-------------------|-------------------------|------------------|--------------------|
-| popularity | quota_mmr | 5.156e-01  | 5.340e-01         | 96.6%                   | 9.470e-03        | 29.0280            |
-| itemknn    | quota_mmr | 6.562e-01  | 6.760e-01         | 97.1%                   | 9.766e-03        | 34.1985            |
-| als        | quota_mmr | 6.875e-01  | 7.093e-01         | 96.9%                   | 9.470e-03        | 32.5000            |
+| popularity | quota_mmr | 5.156e-01  | 5.336e-01         | 96.5%                   | 9.470e-03        | 28.8028            |
+| itemknn    | quota_mmr | 6.562e-01  | 6.755e-01         | 97.1%                   | 9.766e-03        | 35.0261            |
+| als        | quota_mmr | 6.875e-01  | 7.102e-01         | 97.1%                   | 9.470e-03        | 34.2021            |
 
 ### frontier
 
@@ -225,11 +225,11 @@ Generated from `results\main`.
 
 | family     | reranker  | cpu_rerank | cpu_serving_total | rerank_share_of_serving | cpu_rerank_setup | serving_multiplier |
 |------------|-----------|------------|-------------------|-------------------------|------------------|--------------------|
-| popularity | quota_mmr | 5.156e-01  | 5.381e-01         | 95.8%                   | 9.766e-02        | 23.9821            |
+| popularity | quota_mmr | 5.156e-01  | 5.389e-01         | 95.9%                   | 9.766e-02        | 24.2678            |
 | itemknn    | quota_mmr | 5.312e-01  | 5.671e-01         | 93.7%                   | 9.375e-02        | 15.8364            |
-| als        | quota_mmr | 6.250e-01  | 6.546e-01         | 95.5%                   | 9.375e-02        | 22.1064            |
-| multvae    | quota_mmr | 9.062e-01  | 1.052e+00         | 86.1%                   | 4.375e-01        | 7.2143             |
-| gru4rec    | quota_mmr | 1.078e+00  | 1.352e+00         | 79.8%                   | 6.250e-01        | 4.9429             |
+| als        | quota_mmr | 6.250e-01  | 6.577e-01         | 95.6%                   | 9.375e-02        | 22.6340            |
+| multvae    | quota_mmr | 9.062e-01  | 1.056e+00         | 85.9%                   | 4.375e-01        | 7.1071             |
+| gru4rec    | quota_mmr | 1.078e+00  | 1.359e+00         | 82.5%                   | 6.250e-01        | 5.7250             |
 
 ### frontier
 
@@ -305,7 +305,7 @@ Generated from `results\main`.
 |------------|-----------|------------|-------------------|-------------------------|------------------|--------------------|
 | popularity | quota_mmr | 9.531e-01  | 9.754e-01         | 97.7%                   | 3.906e-02        | 43.8070            |
 | itemknn    | quota_mmr | 6.875e-01  | 7.140e-01         | 96.3%                   | 3.646e-02        | 26.9875            |
-| als        | quota_mmr | 7.344e-01  | 7.696e-01         | 95.4%                   | 3.646e-02        | 21.8634            |
+| als        | quota_mmr | 7.344e-01  | 7.668e-01         | 95.6%                   | 3.646e-02        | 22.4988            |
 
 ### frontier
 
@@ -380,8 +380,8 @@ Generated from `results\main`.
 | family     | reranker  | cpu_rerank | cpu_serving_total | rerank_share_of_serving | cpu_rerank_setup | serving_multiplier |
 |------------|-----------|------------|-------------------|-------------------------|------------------|--------------------|
 | popularity | quota_mmr | 1.297e+00  | 1.376e+00         | 94.3%                   | 1.562e-01        | 17.4271            |
-| itemknn    | quota_mmr | 7.188e-01  | 8.117e-01         | 88.5%                   | 1.562e-01        | 8.7311             |
-| als        | quota_mmr | 5.625e-01  | 6.979e-01         | 80.6%                   | 1.406e-01        | 5.1538             |
+| itemknn    | quota_mmr | 7.188e-01  | 8.117e-01         | 88.5%                   | 1.562e-01        | 8.6875             |
+| als        | quota_mmr | 5.625e-01  | 6.927e-01         | 81.3%                   | 1.406e-01        | 5.3434             |
 
 ### frontier
 
