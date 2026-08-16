@@ -140,6 +140,21 @@ def _normalise(scores: np.ndarray) -> np.ndarray:
     silently mean a different objective for every family, so the comparison would be of
     operating points rather than of families.
     """
+    if not np.isfinite(scores).all():
+        # Raised rather than patched. A non-finite score here means the candidate set
+        # contains items the user has already seen -- they carry -inf from the exclusion
+        # mask -- and the arithmetic below would turn that into NaN silently:
+        # -inf minus -inf is NaN, so the reranker would receive a relevance vector of
+        # NaNs, rank on them, and return a list that looks entirely ordinary while
+        # possibly containing items the user has already interacted with.
+        #
+        # The condition is prevented upstream by capping the candidate set to the items
+        # a user could actually be shown. This is the assertion that the cap holds.
+        raise ValueError(
+            "candidate scores contain non-finite values, which means the candidate set "
+            "includes items excluded as already-seen. Reduce n_candidates: the "
+            "catalogue is too small for the requested retrieval depth."
+        )
     span = scores.max() - scores.min()
     if span <= 0:
         return np.ones_like(scores)
@@ -192,9 +207,33 @@ def run_pipeline(
     if user_rows.size == 0:
         raise ValueError(f"{dataset.name} has no users with a held-out item")
 
-    n_candidates = min(n_candidates, dataset.n_items)
+    # Cap retrieval depth at what every served user can actually be shown.
+    #
+    # Seen items are excluded by scoring them -inf, so a user with 5 interactions in a
+    # 147-item catalogue has only 142 candidates that mean anything. Asking for more
+    # does not fail: it returns those 142 plus some -inf entries, which are items the
+    # user has already interacted with. Downstream that is a NaN in the reranker's
+    # relevance vector at best, and a seen item in the final recommendation list at
+    # worst -- the leakage this pipeline exists to avoid, arriving through the back door
+    # on the smallest catalogues.
+    #
+    # The minimum across served users, not the mean: the cap has to hold for every user
+    # in the batch, and the heaviest user is the binding one.
+    seen_counts = np.diff(dataset.train.indptr)[user_rows]
+    usable = int(dataset.n_items - seen_counts.max())
+    requested = n_candidates
+    n_candidates = min(n_candidates, dataset.n_items, usable)
+
     if k > n_candidates:
-        raise ValueError(f"k={k} exceeds the candidate set size {n_candidates}")
+        raise ValueError(
+            f"k={k} exceeds the candidate set size {n_candidates}"
+            + (
+                f" (requested {requested}, capped at {usable} by the busiest user's "
+                f"history in a {dataset.n_items}-item catalogue)"
+                if n_candidates < requested
+                else ""
+            )
+        )
 
     # ------------------------------------------------------------------ 1. train
     session.measure_repeated(
@@ -274,6 +313,12 @@ def run_pipeline(
     )
 
     notes: dict[str, Any] = {"seed": seed, "lam": lam, "mu": mu}
+    if n_candidates < requested:
+        # Carried on the row, because a reranker's cost scales with its problem size:
+        # a run that silently retrieved 142 candidates instead of 200 is not comparable
+        # to one that got all 200, and nothing else in the output would reveal it.
+        notes["n_candidates_requested"] = requested
+        notes["n_candidates_capped_by"] = "user history in a small catalogue"
     if reranker is not None and is_time_bounded(reranker):
         # Recorded on the row itself, not only in prose: this reranker stops on
         # wall-clock, so its quality is hardware-dependent and its cost is not

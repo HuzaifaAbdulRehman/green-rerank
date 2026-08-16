@@ -70,18 +70,26 @@ def power_source() -> str:
     return "ac" if battery.power_plugged else "battery"
 
 
-def machine_busy_pct(sample_seconds: float = 0.5) -> float | None:
-    """System-wide CPU utilisation before the run starts.
+def machine_busy_pct(sample_seconds: float = 0.5, samples: int = 3) -> float | None:
+    """System-wide CPU utilisation before the run starts, as a median of samples.
 
     Measurement pitfall three: never run two jobs at once, because CPU contention is
     charged to whichever method happens to be running. This cannot detect a job that
-    starts *during* the window, but it catches the common case of a forgotten run in
-    another terminal.
+    starts *during* the window -- :class:`ConditionsMonitor` covers that -- but it
+    catches the common case of a forgotten run in another terminal.
+
+    The median of several samples rather than one reading. A single sample is taken
+    moments after the interpreter has finished importing numpy, scipy, pandas and
+    possibly torch, and that startup burst is still draining: it reports the process's
+    own arrival as though it were someone else's load. Observed doing exactly that --
+    a genuinely idle machine read 10.4 %, which was enough to mark an entire 170-run
+    sweep untrustworthy before the first measurement was taken.
     """
     if not _HAS_PSUTIL:
         return None
     psutil.cpu_percent(interval=None)  # priming call; the first read is meaningless
-    return float(psutil.cpu_percent(interval=sample_seconds))
+    readings = sorted(float(psutil.cpu_percent(interval=sample_seconds)) for _ in range(samples))
+    return readings[len(readings) // 2]
 
 
 class ExclusiveLock:

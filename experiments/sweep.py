@@ -81,7 +81,13 @@ DEFAULTS: dict[str, Any] = {
     # ``trustworthy=False``. Distinct from ``max_busy_pct``, which aborts: a plumbing
     # check on a busy machine is a legitimate thing to want, and a cost figure taken
     # during one is not.
-    "trust_busy_pct": 10.0,
+    #
+    # 15 % rather than 10 % because of what the number can resolve. On an 8-thread
+    # machine a single fully busy core is 12.5 % of the total, so a threshold below
+    # that cannot distinguish "quiet" from "one background process" -- it can only
+    # distinguish "quiet" from "quiet plus measurement noise", and it fails on the
+    # latter. This sits just above one core so it still rejects any real competitor.
+    "trust_busy_pct": 15.0,
 }
 
 

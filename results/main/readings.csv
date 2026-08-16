@@ -1,0 +1,4 @@
+stage,label,wall_seconds,cpu_seconds,cpu_user_seconds,cpu_system_seconds,cpu_utilisation,peak_rss_bytes,repeats,cpu_seconds_each,meta.catalogue,meta.repeat,meta.meter,dataset,family,reranker,repeat
+train,popularity,0.3060598000001846,0.3125,0.3125,0.0,1.0210422930414629,339267584,3855,8.106355382619974e-05,gift_cards,0,null,gift_cards,popularity,none,0
+retrieve_score,popularity,0.3173032999993666,0.3125,0.3125,0.0,0.9848621177297048,339267584,30,0.010416666666666666,gift_cards,0,null,gift_cards,popularity,none,0
+retrieve_select,popularity,0.3077901999995447,0.3125,0.3125,0.0,1.015301981676032,339267584,330,0.000946969696969697,gift_cards,0,null,gift_cards,popularity,none,0

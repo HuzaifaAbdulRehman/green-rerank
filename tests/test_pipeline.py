@@ -265,6 +265,45 @@ class TestEndToEnd:
         )
         assert quota.metrics["exposure_parity"] <= plain.metrics["exposure_parity"]
 
+    def test_candidates_never_include_an_item_the_user_has_seen(self, dataset):
+        """The bug that stopped the first real sweep, and it was a leakage bug.
+
+        Seen items are excluded by scoring them ``-inf``. Ask for more candidates than
+        a user has unseen items -- easy on a small catalogue: 147 items, a user with 5
+        interactions, ``n_candidates=200`` -- and retrieval returns the 142 real ones
+        plus ``-inf`` padding, which *is* the user's own history.
+
+        Downstream that became ``-inf - -inf = NaN`` in the reranker's relevance
+        vector, so the reranker ranked on NaN and could select a seen item into the
+        final list. Nothing in the output looked wrong.
+        """
+        n_items = dataset.n_items
+        result = run_pipeline(
+            dataset, build("popularity"), n_candidates=n_items * 2, k=5, n_users=20
+        )
+        assert result.n_candidates < n_items * 2
+        assert result.notes["n_candidates_requested"] == n_items * 2
+
+        rows = dataset.eval_users(20, seed=0)
+        busiest = max(len(dataset.train[int(r)].indices) for r in rows)
+        assert result.n_candidates <= n_items - busiest
+
+    def test_an_oversized_request_still_reranks_without_nan(self, dataset):
+        # The same condition through the reranker, which is where the NaN actually bit.
+        result = run_pipeline(
+            dataset,
+            build("itemknn"),
+            reranker="quota_mmr",
+            n_candidates=dataset.n_items * 2,
+            k=5,
+            n_users=20,
+        )
+        assert np.isfinite(result.metrics["ndcg"])
+        rows = dataset.eval_users(20, seed=0)
+        for position, row in enumerate(rows):
+            seen = set(dataset.train[int(row)].indices.tolist())
+            assert not seen & set(result.final_items[position].tolist())
+
     def test_k_larger_than_the_candidate_set_is_refused(self, dataset):
         with pytest.raises(ValueError, match="exceeds the candidate set"):
             run_pipeline(dataset, build("popularity"), n_candidates=5, k=10, n_users=5)
