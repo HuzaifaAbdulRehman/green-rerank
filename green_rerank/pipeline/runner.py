@@ -393,7 +393,9 @@ def _run_rerank(
     ensure_importable()
     from qubo_rerank.problem import RerankInstance
 
-    solver = build_reranker(reranker, **reranker_kwargs)
+    # `lam` is passed to the solver as well as into the instance, so the classical
+    # rerankers optimise the same objective the annealers read off `problem.lam`.
+    solver = build_reranker(reranker, lam=lam, **reranker_kwargs)
     instances: list[RerankInstance] = []
 
     def rerank_all() -> list[list[int]]:
@@ -459,6 +461,10 @@ def score(
 
     relevant = dataset.relevant_items(recommendations.user_rows)
 
+    # Derived from the data rather than from `dataset.stats`, so a dataset assembled by
+    # hand cannot report a group count its labels do not support.
+    catalogue_groups = int(np.unique(dataset.groups).size)
+
     ndcg_truth: list[float] = []
     ndcg_retrieval: list[float] = []
     recall: list[float] = []
@@ -497,7 +503,18 @@ def score(
         ideal = dcg([1.0]) if found else 0.0
         ndcg_truth.append(dcg(gains) / ideal if ideal > 0 else 0.0)
 
-        parity.append(exposure_parity(dataset.groups[candidates], selection))
+        # `n_groups` is the catalogue's group count, not the candidate set's.
+        #
+        # Without it the target is k / (groups present among the candidates), so a
+        # retrieval model biased enough to return candidates from a single group is
+        # handed a target it meets exactly and scores 0.0 -- perfect fairness for the
+        # most concentrated list possible. Measured: unreranked popularity scored
+        # exactly 0.0000 on digital_music and luxury_beauty, and the study's most-quoted
+        # cost multiplier (43.8x) was attached to a configuration where reranking
+        # therefore appeared to buy no parity improvement at all.
+        parity.append(
+            exposure_parity(dataset.groups[candidates], selection, n_groups=catalogue_groups)
+        )
         if similarity is not None:
             ils.append(
                 intra_list_similarity(_candidate_similarity(similarity, candidates), selection)

@@ -361,7 +361,21 @@ def _run_cell(
         # `movielens100k` -- and letting each file pick its own would put the same
         # catalogue under two names in one results directory, silently breaking any
         # join between runs.csv and per_user.csv.
-        row = {**result.as_row(), **base, "status": "ok", "error": ""}
+        #
+        # But `base` also carried the *requested* depth, which then overwrote the
+        # measured one from `as_row()`. That silently defeated the safeguard of section
+        # 4.4: the cap could shrink a run's problem by half and `runs.csv` would still
+        # report the configured number, so six depth-800 rows in the committed
+        # sensitivity study are labelled with a depth they never ran at. The depth is
+        # therefore taken from the result, and the request kept beside it.
+        row = {
+            **result.as_row(),
+            **base,
+            "n_candidates": result.n_candidates,
+            "n_candidates_requested": cell.n_candidates,
+            "status": "ok",
+            "error": "",
+        }
         row["below_quantum"] = ";".join(result.below_quantum_stages())
         row["n_items"] = dataset.n_items
         row["n_train_users"] = dataset.n_users

@@ -328,6 +328,64 @@ MUTATIONS: tuple[Mutation, ...] = (
         "tests/test_experiments.py",
         "differs by 2.7 points at the endpoint the study quotes",
     ),
+    # ------------------------------------------------ added after the external audit
+    Mutation(
+        "the classical baseline is dropped from the registry",
+        "green_rerank/pipeline/rerankers.py",
+        '"balanced_quota": ("greedy", "BalancedQuota", {}),',
+        "",
+        "tests/test_pipeline.py",
+        "the QUBO would again be compared only against a heuristic with no remainder rule",
+    ),
+    Mutation(
+        "stochastic solvers are unseeded again",
+        "green_rerank/pipeline/rerankers.py",
+        'settings["seed"] = SOLVER_SEED if seed is None else seed',
+        "pass",
+        "tests/test_pipeline.py",
+        "solver randomness would be reported as run-to-run measurement variance",
+    ),
+    Mutation(
+        "lam is not passed to the classical solvers",
+        "green_rerank/pipeline/rerankers.py",
+        'if lam is not None and "lam" in accepted:\n        settings["lam"] = lam',
+        "if False:\n        settings[\"lam\"] = lam",
+        "tests/test_pipeline.py",
+        "classical and QUBO rerankers would optimise different objectives",
+    ),
+    Mutation(
+        "exposure parity ignores the catalogue group count",
+        "green_rerank/pipeline/runner.py",
+        "exposure_parity(dataset.groups[candidates], selection, n_groups=catalogue_groups)",
+        "exposure_parity(dataset.groups[candidates], selection)",
+        "tests/test_pipeline.py",
+        "a single-group candidate set would score as perfectly fair",
+    ),
+    Mutation(
+        "runs.csv records the requested depth again",
+        "experiments/sweep.py",
+        '"n_candidates": result.n_candidates,',
+        '"n_candidates": cell.n_candidates,',
+        "tests/test_experiments.py",
+        "a capped run would be labelled with a depth it never ran at",
+    ),
+    Mutation(
+        "a pinned frequency sensor certifies a clean run",
+        "green_rerank/measure/guards.py",
+        'result["throttled"] = None',
+        'result["throttled"] = False',
+        "tests/test_measure.py",
+        "a dead channel would be read as evidence that nothing moved",
+    ),
+    Mutation(
+        "the paired comparison keeps one repeat again",
+        "experiments/compare.py",
+        'for repeat, sample in per_user.groupby("repeat", sort=True):',
+        'for repeat, sample in per_user[per_user.repeat == per_user.repeat.min()]'
+        '.groupby("repeat", sort=True):',
+        "tests/test_experiments.py",
+        "four fifths of the accuracy evidence would be discarded silently",
+    ),
 )
 
 

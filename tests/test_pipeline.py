@@ -491,3 +491,86 @@ class TestSyntheticDataset:
         # trained on the answer.
         for row, history in dataset.sequences.by_user.items():
             assert dataset.held_out[row] not in history
+
+
+# ---------------------------------------------- invariants added after the audit
+
+
+@pytest.mark.needs_companion
+class TestAuditInvariants:
+    """Scientific invariants an independent audit found nothing was checking.
+
+    Each corresponds to a defect that changed a reported number while leaving the code
+    running, the tests green, and the tables plausible.
+    """
+
+    def test_the_classical_baseline_that_refutes_the_qubo_claim_is_registered(self):
+        """`balanced_quota` must be buildable, or the comparison is against a strawman.
+
+        QuotaMMR caps each group at ceil(k/|C|) with no lower bound and no remainder
+        rule, so it finishes 3/3/3/1 over four groups -- parity 0.30 against a floor of
+        0.20. Omitting largest-remainder apportionment is what let this project report
+        that annealers reach a fairness optimum classical rerankers cannot.
+        """
+        assert "balanced_quota" in KNOWN
+        assert build_reranker("balanced_quota").name == "balanced_quota"
+
+    def test_stochastic_solvers_are_seeded(self):
+        """Unseeded annealers report solver randomness as run-to-run variance.
+
+        In the committed sweep als/qubo_feasible scored 0.0587, 0.0523 and 0.0149 on
+        three repeats of one configuration.
+        """
+        from green_rerank.pipeline.rerankers import STOCHASTIC
+
+        for name in STOCHASTIC:
+            assert build_reranker(name).seed is not None, f"{name} is unseeded"
+
+    def test_every_solver_taking_lam_receives_the_configured_one(self):
+        """Classical rerankers were pinned at lam=0.5 while the QUBO read lam=0.3.
+
+        The two families were optimising different objectives, so the comparison
+        between them was not a comparison of methods.
+        """
+        for name in ("mmr", "quota_mmr", "balanced_quota"):
+            assert build_reranker(name, lam=0.3).lam == pytest.approx(0.3)
+
+    def test_exposure_parity_is_not_degenerate_for_a_single_group_candidate_set(self):
+        """The most concentrated list possible must not score as perfectly fair.
+
+        With the target derived from groups *present among the candidates*, a retrieval
+        model returning one group only is handed a target it meets exactly. Measured:
+        unreranked popularity scored exactly 0.0000 on two of five catalogues.
+        """
+        from green_rerank.companion import ensure_importable
+
+        ensure_importable()
+        from qubo_rerank.metrics import exposure_parity
+
+        one_group = np.zeros(100, dtype=int)
+        selection = list(range(10))
+
+        assert exposure_parity(one_group, selection) == 0.0  # the defect, documented
+        assert exposure_parity(one_group, selection, n_groups=4) == pytest.approx(1.5)
+
+    def test_exposure_parity_floor_is_unchanged_for_a_balanced_list(self):
+        # The fix must not move the optimum: (3,3,2,2) over four groups is still 0.200.
+        from green_rerank.companion import ensure_importable
+
+        ensure_importable()
+        from qubo_rerank.metrics import exposure_parity
+
+        pool = np.array([g for g in range(4) for _ in range(25)])
+        selection = [
+            int(i) for g in range(4) for i in np.flatnonzero(pool == g)[: (3 if g < 2 else 2)]
+        ]
+        assert exposure_parity(pool, selection, n_groups=4) == pytest.approx(0.2)
+
+    def test_the_pipeline_passes_the_catalogue_group_count(self, dataset):
+        """Otherwise the metric is computed on the candidate set's groups.
+
+        Asserted end-to-end rather than at the call site, because the defect was that
+        the argument was never supplied at all.
+        """
+        result = run_pipeline(dataset, build("popularity"), n_candidates=20, k=5, n_users=20)
+        assert result.metrics["exposure_parity"] > 0.0

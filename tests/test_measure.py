@@ -573,3 +573,54 @@ class TestOutput:
         assert "rapl.package-0_j" in frame.columns
         assert frame["rapl.package-0_j"].iloc[0] == 12.0
         assert pd.isna(frame["rapl.package-0_j"].iloc[1])
+
+
+class TestFrequencySensorValidity:
+    """The monitor's own instrument, held to the standard it holds codecarbon to.
+
+    ``psutil.cpu_freq().current`` returns a policy-derived constant on this Windows
+    laptop: measured at exactly 1696.0 MHz across eighteen samples spanning idle and
+    eight saturated cores. Reporting 1,981 identical readings as "no throttling" is the
+    same error as codecarbon reporting 0.0 % utilisation under full load -- a channel
+    that cannot move being read as evidence that nothing moved.
+    """
+
+    @staticmethod
+    def _monitor(frequencies, sources=("ac",)):
+        monitor = ConditionsMonitor()
+        monitor.frequencies = list(frequencies)
+        monitor.power_sources = set(sources)
+        return monitor
+
+    def test_a_pinned_sensor_reports_unknown_rather_than_clean(self):
+        report = self._monitor([1696.0] * 60).report()
+        assert report["frequency_sensor_responsive"] is False
+        assert report["throttled"] is None, "a dead channel must not certify a clean run"
+        assert not report["conditions_changed"]
+
+    def test_a_live_sensor_that_saw_no_drop_still_reports_False(self):
+        # Genuine variation, no throttling: the answer is "watched, saw nothing".
+        report = self._monitor([2800.0, 2795.0, 2801.0, 2799.0] * 15).report()
+        assert report["frequency_sensor_responsive"] is True
+        assert report["throttled"] is False
+
+    def test_a_live_sensor_still_catches_a_real_drop(self):
+        report = self._monitor([3600.0] * 30 + [1297.0] * 30).report()
+        assert report["frequency_sensor_responsive"] is True
+        assert report["throttled"] is True
+        assert report["conditions_changed"]
+
+    def test_too_few_samples_to_judge_responsiveness(self):
+        # Three identical readings are not evidence of a dead sensor.
+        report = self._monitor([1696.0, 1696.0, 1696.0]).report()
+        assert report["frequency_sensor_responsive"] is True
+
+    def test_power_source_detection_is_unaffected(self):
+        """The power channel is live even where the frequency channel is not.
+
+        It correctly reads 1297 MHz on battery against 1696 on mains, so a change of
+        power policy is detectable even though thermal throttling is not.
+        """
+        report = self._monitor([1696.0] * 60, sources=("ac", "battery")).report()
+        assert report["power_source_changed"]
+        assert report["conditions_changed"]

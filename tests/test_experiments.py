@@ -365,6 +365,32 @@ class TestSweepEndToEnd:
         # Stated in the results directory rather than left as a gap someone must notice.
         assert "synthetic" in book["skipped_catalogues"]
 
+    def test_runs_csv_records_the_measured_depth_not_the_requested_one(
+        self, patched, tmp_path, monkeypatch
+    ):
+        """The safeguard of section 4.4, which the row assembly silently defeated.
+
+        `base` was applied last and carried the configured `n_candidates`, overwriting
+        the measured value from `as_row()`. So the cap could halve a run's problem and
+        `runs.csv` still reported the number that was asked for -- which mislabelled six
+        depth-800 rows in the committed sensitivity study.
+        """
+        tiny = synthetic(n_users=30, n_items=24, blocks=4, per_user=6, seed=0)
+        monkeypatch.setattr(patched.catalogues, "load", lambda name, **kw: tiny)
+
+        import warnings as w
+
+        with w.catch_warnings():
+            w.simplefilter("ignore")
+            frame = patched.run(
+                self._config(n_candidates=200, k=5, n_users=20, min_items=10), tmp_path
+            )
+
+        row = frame.iloc[0]
+        assert row.n_candidates < 200, "the cap did not bind, so this proves nothing"
+        assert row.n_candidates_requested == 200
+        assert row.n_candidates <= tiny.n_items
+
     def test_per_user_rows_are_keyed_on_the_user_not_the_position(self, patched, tmp_path):
         patched.run(self._config(repeats=1, n_users=20), tmp_path)
         per_user = pd.read_csv(tmp_path / "per_user.csv")

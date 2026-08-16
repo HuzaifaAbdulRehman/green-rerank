@@ -205,8 +205,26 @@ class ConditionsMonitor:
             self._thread.join(timeout=self.interval * 2)
         return self.report()
 
+    #: A frequency channel that never moves across at least this many samples is treated
+    #: as unresponsive rather than as evidence of a steady clock.
+    CONSTANT_SAMPLE_FLOOR = 30
+
     def report(self) -> dict[str, object]:
-        """What the conditions did, and whether they invalidate the run."""
+        """What the conditions did, and whether they invalidate the run.
+
+        ``throttled`` is deliberately three-valued. ``False`` means the sensor watched
+        and saw no drop; ``None`` means the sensor cannot see drops on this machine and
+        the question is unanswered. Collapsing those two into ``False`` is exactly the
+        error this project condemns in codecarbon's utilisation channel, and the project
+        committed it: ``psutil.cpu_freq().current`` returns a policy-derived constant on
+        this Windows laptop -- measured at exactly 1696.0 MHz across eighteen samples
+        spanning idle and eight saturated cores -- so 1,981 identical readings were
+        reported as "no throttling" when they were no measurement at all.
+
+        The power-source channel is unaffected and remains live: it correctly reads
+        1297 MHz on battery against 1696 on mains, so a change of power *policy* is
+        detectable even though thermal throttling is not.
+        """
         result: dict[str, object] = {
             "power_sources_seen": sorted(self.power_sources),
             "power_source_changed": len(self.power_sources) > 1,
@@ -223,12 +241,24 @@ class ConditionsMonitor:
                     "frequency_drop": (top - low) / top if top else 0.0,
                 }
             )
+
         drop = float(result.get("frequency_drop", 0.0) or 0.0)
-        result["throttled"] = drop > self.DROP_THRESHOLD
+        unresponsive = (
+            len(self.frequencies) >= self.CONSTANT_SAMPLE_FLOOR
+            and result.get("cpu_mhz_max") == result.get("cpu_mhz_min")
+        )
+        result["frequency_sensor_responsive"] = not unresponsive if self.frequencies else None
+
+        if unresponsive or not self.frequencies:
+            # Unknown, not clean. A run carrying this cannot claim it was not throttled.
+            result["throttled"] = None
+        else:
+            result["throttled"] = drop > self.DROP_THRESHOLD
+
         # One flag the caller can act on without knowing which check produced it. Any
         # run carrying this is not comparable to one that does not, on the cost axis.
         result["conditions_changed"] = bool(
-            result["power_source_changed"] or result["throttled"]
+            result["power_source_changed"] or result["throttled"] is True
         )
         return result
 

@@ -130,16 +130,17 @@ def compare_pair(
 
 
 def compare_all(
-    per_user: pd.DataFrame, reference: str, seed: int = 0
+    per_user: pd.DataFrame,
+    reference: str,
+    seed: int = 0,
+    metrics: tuple[str, ...] = PAIRED_METRICS,
 ) -> pd.DataFrame:
-    """Compare every configuration against ``reference``, correcting once at the end.
+    """Compare every configuration against ``reference``, in every repeat.
 
-    One correction across the whole reported family, not per metric. Correcting within
-    each metric separately would let the family-wise error rate grow with the number of
-    metrics reported -- which is a choice made after seeing the data.
+    Holm correction is applied once across the whole reported family *within* each
+    repeat, not per metric: correcting per metric would let the family-wise error rate
+    grow with the number of metrics reported, which is a choice made after seeing data.
     """
-    _, holm = _companion_stats()
-
     per_user = per_user.copy()
     per_user["config"] = per_user.apply(
         lambda r: r["family"] if r["reranker"] in ("none", "", None)
@@ -150,11 +151,43 @@ def compare_all(
     if reference not in available:
         raise SystemExit(f"reference {reference!r} not among {available}")
 
-    # Repeats resample users, so pooling them would put the same user in the table
-    # several times with different neighbours and break the pairing. One repeat is
-    # compared -- the first -- and the rest are what the *cost* interval is built from.
-    first = per_user["repeat"].min()
-    per_user = per_user[per_user["repeat"] == first]
+    # Every repeat is tested, and every result reported.
+    #
+    # This used to silently keep `repeat.min()` alone. Repeats resample users, so they
+    # cannot be pooled into one Wilcoxon -- that much was right -- but discarding four
+    # fifths of the evidence and reporting the fifth is worse than either alternative.
+    # An audit re-ran the same analysis on all five samples of the study's headline
+    # accuracy claim and found it significant in one: p_holm = 0.043, 0.767, 1.000,
+    # 0.459, 1.000. The report quoted the 0.043.
+    #
+    # Each repeat is now analysed separately with its own Holm correction, and the
+    # caller receives every row. `repeats_significant` counts how many of them cleared
+    # the threshold, which is the number a reader needs and the number that was missing.
+    per_repeat = []
+    for repeat, sample in per_user.groupby("repeat", sort=True):
+        rows = _compare_one_sample(sample, reference, metrics, seed)
+        if rows.empty:
+            continue
+        rows.insert(0, "repeat", repeat)
+        per_repeat.append(rows)
+
+    if not per_repeat:
+        return pd.DataFrame()
+
+    table = pd.concat(per_repeat, ignore_index=True)
+    replication = (
+        table.groupby(["dataset", "config", "metric"])
+        .significant.agg(["sum", "count"])
+        .rename(columns={"sum": "repeats_significant", "count": "repeats_tested"})
+    )
+    return table.merge(replication, on=["dataset", "config", "metric"], how="left")
+
+
+def _compare_one_sample(
+    per_user: pd.DataFrame, reference: str, metrics: tuple[str, ...], seed: int
+) -> pd.DataFrame:
+    """Paired tests within a single repeat, corrected once across that repeat."""
+    _, holm = _companion_stats()
 
     # A user must appear at most once per configuration, or the merge below becomes a
     # cross join and every comparison silently runs on a multiple of the rows it should.
@@ -185,7 +218,7 @@ def compare_all(
             if config == reference:
                 continue
             candidate = frame[frame["config"] == config]
-            for metric in PAIRED_METRICS:
+            for metric in metrics:
                 if metric not in frame.columns or frame[metric].isna().all():
                     continue
                 result = compare_pair(candidate, reference_rows, metric, seed)
