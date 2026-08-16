@@ -533,6 +533,38 @@ class TestAnalysis:
         assert row["cheaper_below"] == "itemknn"
         assert row["cheaper_above"] == "als"
 
+    def test_the_share_is_a_median_of_ratios_not_a_ratio_of_medians(self, tmp_path: Path):
+        """Two defensible statistics that disagree, and the study quotes the endpoint.
+
+        Constructed so the two differ unmistakably: the rerank cost and the retrieval
+        cost peak on *different* repeats, so summarising them separately and dividing
+        gives a share no single run exhibited.
+
+        Ratio of medians here: 2.0 / 3.0 = 0.667.
+        Median of the per-run ratios (2/11, 2/3, 10/11): 0.667 -- no. Worked below.
+
+        On the real data the two differ by 2.7 percentage points for GRU4Rec, which is
+        precisely the low endpoint of the range section 7.2 reports, and an earlier
+        draft had the report's table using one and its summary sentence the other.
+        """
+        from experiments.analyse import rerank_share
+
+        # rerank: 1, 2, 9   retrieve_total: 9, 1, 1  -> serving: 10, 3, 10
+        # per-run shares:   0.10, 0.667, 0.90        -> median 0.667
+        # ratio of medians: median(rerank)=2, median(serving)=10 -> 0.20
+        rows = [
+            {
+                "dataset": "d", "family": "f", "reranker": "quota_mmr", "repeat": i,
+                "status": "ok", "trustworthy": True, "n_users": 10,
+                "cpu_rerank": rerank, "cpu_retrieve_score": retrieve,
+                "cpu_retrieve_select": 0.0, "cpu_rerank_setup": 0.0,
+            }
+            for i, (rerank, retrieve) in enumerate([(1.0, 9.0), (2.0, 1.0), (9.0, 1.0)])
+        ]
+        table = rerank_share(pd.DataFrame(rows))
+        assert table.rerank_share_of_serving.iloc[0] == pytest.approx(2 / 3)
+        assert table.rerank_share_of_serving.iloc[0] != pytest.approx(0.2)
+
     def test_rerank_share_covers_only_reranked_rows(self, tmp_path: Path):
         table = rerank_share(load_runs(_runs(tmp_path)))
         assert set(table["reranker"]) == {"quota_mmr"}
@@ -552,24 +584,30 @@ class TestAnalysis:
         from experiments.analyse import reranker_comparison
 
         rows = []
+        # Two families whose reranking costs differ by 10x. Normalised globally, the
+        # cheap family's ratios would be measured against the *other* family's floor and
+        # both would be wrong -- so the second family is what makes this test bite.
         for repeat in range(3):
-            for reranker, rerank_cost in (("mmr", 1.0e-3), ("qubo_feasible", 2.5e-1)):
-                rows.append(
-                    {
-                        "dataset": "d", "family": "itemknn", "reranker": reranker,
-                        "repeat": repeat, "status": "ok", "trustworthy": True,
-                        "n_users": 100, "ndcg": 0.05, "recall": 0.1,
-                        "exposure_parity": 0.25, "n_candidates": 100,
-                        "cpu_retrieve_score": 1e-4, "cpu_retrieve_select": 1e-4,
-                        "cpu_rerank": rerank_cost,
-                    }
-                )
+            for family, scale in (("itemknn", 1.0), ("gru4rec", 10.0)):
+                for reranker, rerank_cost in (("mmr", 1.0e-3), ("qubo_feasible", 2.5e-1)):
+                    rows.append(
+                        {
+                            "dataset": "d", "family": family, "reranker": reranker,
+                            "repeat": repeat, "status": "ok", "trustworthy": True,
+                            "n_users": 100, "ndcg": 0.05, "recall": 0.1,
+                            "exposure_parity": 0.25, "n_candidates": 100,
+                            "cpu_retrieve_score": 1e-4, "cpu_retrieve_select": 1e-4,
+                            "cpu_rerank": rerank_cost * scale,
+                        }
+                    )
         table = reranker_comparison(pd.DataFrame(rows))
 
-        cheapest = table[table.reranker == "mmr"].iloc[0]
-        dearest = table[table.reranker == "qubo_feasible"].iloc[0]
-        assert cheapest.cost_vs_cheapest == pytest.approx(1.0)
-        assert dearest.cost_vs_cheapest == pytest.approx(250.0)
+        # Both families see the same 250x ratio, because each is normalised against its
+        # own cheapest reranker rather than against the global minimum.
+        for family in ("itemknn", "gru4rec"):
+            sub = table[table.family == family].set_index("reranker")
+            assert sub.loc["mmr", "cost_vs_cheapest"] == pytest.approx(1.0)
+            assert sub.loc["qubo_feasible", "cost_vs_cheapest"] == pytest.approx(250.0)
 
     def test_a_time_bounded_reranker_is_flagged_in_the_comparison(self, tmp_path: Path):
         """Its cost is fixed by construction and its quality is what varied.

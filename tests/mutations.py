@@ -286,6 +286,48 @@ MUTATIONS: tuple[Mutation, ...] = (
         "tests/test_companion.py",
         "later imports get fresh module objects with separate state",
     ),
+    Mutation(
+        "a severe depth cap no longer warns",
+        "green_rerank/pipeline/runner.py",
+        "if n_candidates < requested * SEVERE_CAP_FRACTION:",
+        "if False:",
+        "tests/test_pipeline.py",
+        "a run measuring a hundredth of the configured problem would say so only in a CSV",
+    ),
+    Mutation(
+        "the depth cap takes the median user, not the busiest",
+        "green_rerank/pipeline/runner.py",
+        "usable = int(dataset.n_items - seen_counts.max())",
+        "usable = int(dataset.n_items - np.median(seen_counts))",
+        "tests/test_pipeline.py",
+        "the cap must hold for every served user; the heaviest one is the binding one",
+    ),
+    Mutation(
+        "reranker comparison normalised across families",
+        "experiments/analyse.py",
+        'table["cost_vs_cheapest"] = table.groupby("family").cpu_rerank_per_request'
+        ".transform(\n        lambda column: column / column.min()\n    )",
+        'table["cost_vs_cheapest"] = (\n        table.cpu_rerank_per_request '
+        "/ table.cpu_rerank_per_request.min()\n    )",
+        "tests/test_experiments.py",
+        "attributes the retrieval model's cost to the reranker being compared",
+    ),
+    Mutation(
+        "time-bounded rerankers not flagged in the comparison",
+        "experiments/analyse.py",
+        '"time_bounded": is_time_bounded(str(reranker)),',
+        '"time_bounded": False,',
+        "tests/test_experiments.py",
+        "its cost is fixed by construction; every other row must be read differently",
+    ),
+    Mutation(
+        "the reranking share becomes a ratio of medians again",
+        "experiments/analyse.py",
+        "share = (rerank / serving).median()",
+        "share = rerank.median() / serving.median()",
+        "tests/test_experiments.py",
+        "differs by 2.7 points at the endpoint the study quotes",
+    ),
 )
 
 
