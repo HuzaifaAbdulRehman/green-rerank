@@ -7,6 +7,40 @@ readings in `results/main/readings.csv`.
 
 ---
 
+## Summary of findings
+
+**Break-even exists and is measurable.** ItemKNN against ALS on MovieLens 100K crosses at
+**N = 112,730 requests** (95 % CI 51,128 – 180,720). Below that the neighbourhood model is
+the cheaper deployment; above it, the factor model. Only 13 of 45 configuration pairs
+cross stably enough to report, and that denominator is part of the result: amortisation
+often has no answer, because one family simply dominates. §7.1
+
+**A fairness reranker costs 81–98 % of per-request serving cost**, multiplying serving
+cost 5.3× to 43.8×. Adding exposure fairness to a popularity baseline multiplies its
+serving cost 24-fold. No prior energy study appears to have costed this stage at all. §7.2
+
+**When reranking for fairness, retrieve shallowly.** Going from 50 to 800 candidates costs
+35× more (cost scales O(n^1.2–1.3)), yields *no* measurable fairness improvement — exposure
+parity is flat at 0.254 across the whole range — and *loses* accuracy. §7.6
+
+**MovieLens 100K is an outlier, and it is the catalogue everyone uses.** There, neither
+ItemKNN nor ALS nor MultVAE is distinguishable from recommending the globally most popular
+items; only GRU4Rec beats that baseline, for 2.7 million times popularity's training cost.
+On the other four catalogues ItemKNN beats it clearly. A method validated only on ML-100K
+can be reported as beating a baseline it does not beat. §7.5
+
+**Retraining cadence is a larger lever than model choice.** Holding traffic fixed,
+GRU4Rec's total cost moves **791×** between never retraining and retraining every 100
+requests, with accuracy unchanged. §7.4
+
+**The energy backend is blind on this hardware, and that is a reported result.** codecarbon
+3.3.0 reports 0.0 % CPU utilisation under eight saturated cores, a hardcoded 10.000 W for
+RAM, a 1.11× power swing from idle to saturation, and *less* total energy under full load
+than at idle. A second test refuted this project's own hypothesis that the energy column
+was merely a rescaled clock: it is worse than that. §5
+
+---
+
 ## 1. The question
 
 A deployer choosing a recommender model wants to know what it will cost to run. The
@@ -551,11 +585,34 @@ beside directly measured CPU-seconds would put two incomparable quantities in on
 ## 9. Reproducing
 
 ```bash
-python -m experiments.validity                              # §5, ~2 minutes
+# §5 -- the energy-axis check. Two minutes, no dataset needed.
+python -m experiments.validity --readings results/energy/readings.csv
+
+# §7.1-7.5 -- the main sweep. ~75 minutes on the development machine.
 python -m experiments.sweep    --config experiments/configs/main.yaml
 python -m experiments.analyse  --results results/main
+python -m experiments.compare  --results results/main --reference popularity
 python -m experiments.figures  --results results/main
+
+# §7.6 -- retrieval-depth sensitivity. ~25 minutes.
+python -m experiments.sweep    --config experiments/configs/depth.yaml
+python -m experiments.analyse  --results results/depth
+
+# §5.1 -- the agreement test needs a meter-enabled sweep. ~10 minutes.
+python -m experiments.sweep    --config experiments/configs/energy.yaml
+
+# Every number quoted in this report, regenerated from the results.
+python -m experiments.headline --results results/main
 ```
+
+That last command exists because this report drifted from its own data once: §5's table
+was transcribed from a validity run that a later run superseded, and both sets of numbers
+were plausible enough that nothing caught it. Prose is written by hand and nothing checks
+it, so the numbers are now regenerated rather than remembered.
+
+The sweep resumes by default, so an interrupted run continues where it stopped. Repeat is
+the outermost loop, so a partial sweep still holds one complete observation of every cell
+rather than five of the first family and none of the rest.
 
 Each results directory carries a `manifest.json` recording the revision of **both**
 repositories — every accuracy metric here is computed by companion code, so a provenance
