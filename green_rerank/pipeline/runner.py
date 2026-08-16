@@ -17,6 +17,7 @@ exactly where the comparison between families is decided.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -29,6 +30,11 @@ from green_rerank.families.base import Family, Recommendations
 from green_rerank.measure import MeasurementSession, Reading
 from green_rerank.pipeline.rerankers import build_reranker, is_time_bounded
 from green_rerank.pipeline.stages import Amortisation, Stage
+
+#: Below this fraction of the requested depth, the cap is loud rather than noted. A
+#: mild trim is ordinary on a small catalogue; losing half the candidate set means the
+#: run is measuring a different problem from the one configured.
+SEVERE_CAP_FRACTION = 0.5
 
 
 @dataclass
@@ -219,6 +225,14 @@ def run_pipeline(
     #
     # The minimum across served users, not the mean: the cap has to hold for every user
     # in the batch, and the heaviest user is the binding one.
+    # A consequence worth being explicit about: a *single* saturated user binds the
+    # depth for the whole batch. Twenty users of whom nineteen have five interactions
+    # each and one has seen almost everything gives every one of them that last user's
+    # candidate set. That is the conservative choice and it is the right one -- the
+    # alternative is ragged per-user candidate sets, which the reranker cannot take and
+    # which would make the arrays non-rectangular -- but it means the run can end up
+    # measuring a much smaller problem than was requested, and reranking cost scales
+    # with problem size.
     seen_counts = np.diff(dataset.train.indptr)[user_rows]
     usable = int(dataset.n_items - seen_counts.max())
     requested = n_candidates
@@ -319,6 +333,21 @@ def run_pipeline(
         # to one that got all 200, and nothing else in the output would reveal it.
         notes["n_candidates_requested"] = requested
         notes["n_candidates_capped_by"] = "user history in a small catalogue"
+        notes["n_candidates_kept_fraction"] = n_candidates / requested
+
+        # A mild cap is ordinary on a small catalogue. A severe one means the run is
+        # answering a different question from the one asked, and a note in a CSV column
+        # is not enough for something that changes what the row measures.
+        if n_candidates < requested * SEVERE_CAP_FRACTION:
+            warnings.warn(
+                f"retrieval depth cut from {requested} to {n_candidates} "
+                f"({n_candidates / requested:.0%} kept) on {dataset.name}: the busiest "
+                f"served user has seen {int(seen_counts.max())} of "
+                f"{dataset.n_items} items. Reranking cost scales with problem size, so "
+                "this row is not comparable to one measured at the requested depth.",
+                stacklevel=2,
+            )
+            notes["n_candidates_severely_capped"] = True
     if reranker is not None and is_time_bounded(reranker):
         # Recorded on the row itself, not only in prose: this reranker stops on
         # wall-clock, so its quality is hardware-dependent and its cost is not

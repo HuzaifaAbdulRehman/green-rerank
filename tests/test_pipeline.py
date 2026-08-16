@@ -278,9 +278,12 @@ class TestEndToEnd:
         final list. Nothing in the output looked wrong.
         """
         n_items = dataset.n_items
-        result = run_pipeline(
-            dataset, build("popularity"), n_candidates=n_items * 2, k=5, n_users=20
-        )
+        # The cap is severe here by construction, so the warning is part of the
+        # contract rather than noise to be tolerated.
+        with pytest.warns(UserWarning, match="retrieval depth cut"):
+            result = run_pipeline(
+                dataset, build("popularity"), n_candidates=n_items * 2, k=5, n_users=20
+            )
         assert result.n_candidates < n_items * 2
         assert result.notes["n_candidates_requested"] == n_items * 2
 
@@ -288,16 +291,77 @@ class TestEndToEnd:
         busiest = max(len(dataset.train[int(r)].indices) for r in rows)
         assert result.n_candidates <= n_items - busiest
 
+    def test_a_severe_cap_warns_rather_than_only_noting(self):
+        """One saturated user binds the depth for the whole batch.
+
+        Nineteen users with five interactions each and one who has seen almost the
+        catalogue gives all twenty that last user's candidate set. The conservative
+        choice is right -- ragged per-user candidate sets are not something the reranker
+        can take -- but it can shrink the problem by two orders of magnitude, and
+        reranking cost scales with problem size. A CSV column is not enough for
+        something that changes what the row measures.
+        """
+        from scipy import sparse
+
+        from green_rerank.data import Dataset
+        from green_rerank.families.base import Sequences
+
+        n_items, n_users = 30, 20
+        rows, cols = [], []
+        for user in range(n_users):
+            seen = list(range(n_items - 2)) if user == 0 else list(range(5))
+            rows += [user] * len(seen)
+            cols += seen
+        matrix = sparse.csr_matrix(
+            (np.ones(len(rows)), (rows, cols)), shape=(n_users, n_items)
+        )
+        saturated = Dataset(
+            name="saturated",
+            train=matrix,
+            held_out={u: n_items - 1 for u in range(n_users)},
+            groups=np.arange(n_items) % 3,
+            sequences=Sequences(by_user={u: list(range(5)) for u in range(n_users)}, max_length=10),
+            item_ids=[str(i) for i in range(n_items)],
+            stats={"n_groups": 3},
+        )
+
+        with pytest.warns(UserWarning, match="retrieval depth cut"):
+            result = run_pipeline(
+                saturated, build("popularity"), n_candidates=25, k=2, n_users=n_users
+            )
+
+        assert result.n_candidates == 2  # 30 items minus the busiest user's 28
+        assert result.notes["n_candidates_severely_capped"] is True
+        assert result.notes["n_candidates_kept_fraction"] == pytest.approx(2 / 25)
+
+        # Still no leakage, which is what the cap is for in the first place.
+        seen = set(matrix[0].indices.tolist())
+        assert not seen & set(result.final_items[0].tolist())
+
+    def test_a_mild_cap_is_noted_without_warning(self, dataset):
+        # Trimming a few candidates on a small catalogue is ordinary. Warning on it
+        # would train the reader to ignore the warning that matters.
+        import warnings as warnings_module
+
+        with warnings_module.catch_warnings():
+            warnings_module.simplefilter("error")
+            result = run_pipeline(
+                dataset, build("popularity"), n_candidates=34, k=5, n_users=20
+            )
+        assert result.n_candidates < 34
+        assert "n_candidates_severely_capped" not in result.notes
+
     def test_an_oversized_request_still_reranks_without_nan(self, dataset):
         # The same condition through the reranker, which is where the NaN actually bit.
-        result = run_pipeline(
-            dataset,
-            build("itemknn"),
-            reranker="quota_mmr",
-            n_candidates=dataset.n_items * 2,
-            k=5,
-            n_users=20,
-        )
+        with pytest.warns(UserWarning, match="retrieval depth cut"):
+            result = run_pipeline(
+                dataset,
+                build("itemknn"),
+                reranker="quota_mmr",
+                n_candidates=dataset.n_items * 2,
+                k=5,
+                n_users=20,
+            )
         assert np.isfinite(result.metrics["ndcg"])
         rows = dataset.eval_users(20, seed=0)
         for position, row in enumerate(rows):
