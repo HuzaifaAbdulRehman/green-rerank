@@ -45,20 +45,65 @@ hardware the answer is no, and that is a result rather than an obstacle.
 
 ---
 
+## What it found
+
+170 measured runs across five catalogues (147 to 11,268 items), five model families and
+two reranking conditions, five repeats each. Zero failures, every row passing the trust
+check on an idle mains-powered machine, no stage falling below the clock quantum.
+Full write-up in [`docs/report.md`](docs/report.md).
+
+**A break-even exists and is measurable.** ItemKNN against ALS on MovieLens 100K crosses
+at **N = 112,730 requests** (95 % CI 51,128 – 180,720; 95 % of bootstrap replicates
+cross). Below that the neighbourhood model is the cheaper deployment, above it the factor
+model. Only 13 of 45 configuration pairs cross stably enough to report — that denominator
+is part of the result.
+
+**Fairness reranking is 80–98 % of per-request cost**, multiplying serving cost 4.9× to
+43.8×. A deployer adding exposure fairness to a popularity baseline is not paying a
+margin, they are paying **24 times** their serving cost. As far as the literature search
+found, this is the first published figure for what a fairness reranker costs as a share
+of a pipeline.
+
+**Retrieve shallowly when reranking.** Going from 50 to 800 candidates costs 35× more in
+the rerank stage (cost scales O(n^1.2–1.3)), delivers **no** measurable fairness
+improvement (exposure parity flat at 0.254), and *loses* accuracy.
+
+**Most models do not beat recommending the most popular items.** On MovieLens 100K only
+GRU4Rec beats a popularity baseline under a paired per-user test, and only on recall
+(37 wins / 11 losses, p = 0.0073) — for 451 CPU-seconds of training against popularity's
+0.000167, a factor of 2.7 million. ItemKNN, ALS and MultVAE show no detectable
+difference. ItemKNN and MultVAE are *dominated*: costlier than popularity and less
+accurate, so they should not be deployed on that catalogue at all. On `software` the
+verdict flips and ItemKNN and ALS win clearly — the catalogue-dependence is itself the
+finding.
+
+**Retraining cadence is a bigger lever than model choice.** Holding traffic fixed,
+GRU4Rec's total cost moves 791× between never retraining and retraining every 100
+requests, with accuracy unchanged.
+
+---
+
 ## The cost unit is CPU-seconds, and that is a finding
 
-`codecarbon` **cannot see CPU load on the development machine**. Measured directly with a
-graded-load test — 0, 1, 2, 4 and 8 busy workers, 20 seconds each:
+`codecarbon` **cannot see CPU load on the development machine**. Measured on codecarbon
+3.3.0 with a graded load — 0, 1, 2, 4 and 8 busy processes, 20 s each, idle machine.
+Reproduce with `python -m experiments.validity`:
 
-| load | reported CPU power | reported `cpu_utilization_percent` |
-|------|--------------------|------------------------------------|
-| idle | 1.501 W | 0.0 % |
-| all 8 threads saturated | 1.815 W | 0.0 % |
+| busy workers | reported CPU power | reported utilisation | reported RAM power | total energy |
+|--------------|--------------------|----------------------|--------------------|--------------|
+| 0 | 1.500 W | 0.0 % | 10.000 W | 7.459e-05 kWh |
+| 4 | 1.523 W | 0.0 % | 10.000 W | 6.722e-05 kWh |
+| 8 | 1.687 W | 0.0 % | 10.000 W | 7.418e-05 kWh |
 
-A 1.21× swing against a true dynamic range of roughly 10× for this part, with utilisation
-pinned at zero throughout. The fully loaded run reported **less** total energy than idle
-(7.290e-05 vs 7.371e-05 kWh), and RAM power is a hardcoded 10.000 W constant that
-dominates the total.
+Utilisation reads exactly zero at every level including eight saturated cores. CPU power
+moves **1.12×** across the full span, against a true dynamic range of roughly 10× for
+this part. RAM power is exactly 10.000 W throughout — a hardcoded constant, and it
+dominates the total. The fully loaded run reports **less** total energy than idle.
+
+A second test regressed reported energy on elapsed time over 144 readings from real
+workloads, expecting to find that the energy column was simply a rescaled clock. It is
+not, and the truth is worse: R² = 0.55, with the implied kWh-per-CPU-second conversion
+varying **13.7×**. Not even a constant misestimate that could be calibrated away.
 
 The machine (Intel i5-8350U, 15 W TDP, Windows 10) exposes no RAPL, and WSL2 does not
 help — verified, not assumed: `/sys/class/powercap` exists but is empty and
