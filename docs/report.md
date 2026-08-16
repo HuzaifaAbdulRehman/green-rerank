@@ -616,7 +616,84 @@ but any specific percentage must be quoted with its depth.
 datacentre that cannot be instrumented from here, and an API-derived estimate placed
 beside directly measured CPU-seconds would put two incomparable quantities in one column.
 
-## 9. Reproducing
+## 9. What the two projects say together
+
+Neither project answers the deployer's question alone, and the gap between them is
+specific.
+
+**`feasible-rerank`** established that a QUBO formulation of fairness reranking buys
+**feasibility, not accuracy**: below a group-exposure requirement of τ ≈ 0.25, no
+classical reranker tested can satisfy the constraint at any setting of its own
+hyperparameters, and the QUBO can. It also reported the price as *"roughly 100× the
+wall-clock"* — measured against a **fixed candidate set**, because that is the object of
+study there.
+
+That figure cannot be acted on. A reranker measured against a pre-built candidate set has
+no denominator: 100× of a quantity that might be 0.1 % of the pipeline is negligible, and
+100× of a quantity that is 90 % of it is disqualifying. Which of those is true was
+unanswerable until the surrounding stages were costed.
+
+This project supplies the denominator. §7.2 shows the classical reranker already accounts
+for **81–98 %** of per-request cost, so the stage the QUBO multiplies is the dominant one,
+not a rounding error. §7.6 shows its cost scales O(n^1.2–1.3) in retrieval depth, so the
+multiplier compounds with a parameter deployers routinely set too high. And §7.1 gives the
+frame in which such a multiplier is decided at all: not "is it expensive" but "at what
+request volume does it stop being worth it".
+
+The synthesis is a conditional recommendation rather than a verdict, which is the honest
+form: **a QUBO reranker is defensible exactly when the fairness constraint is tight enough
+that no classical method satisfies it** — τ below ≈ 0.25, from the companion — **and the
+deployment's request volume is low enough that a multiplied per-request cost has not yet
+overtaken the one-off costs around it.** Both halves are measured; neither was available
+before.
+
+§10 measures the multiplier itself.
+
+## 10. What a quantum-inspired reranker costs in a pipeline
+
+*Pending: `experiments/configs/rerankers.yaml`, awaiting an idle machine.*
+
+All five rerankers under identical conditions — `greedy_topk`, `mmr`, `quota_mmr`,
+`qubo_feasible`, `qubo_tabu` — across three retrieval families on MovieLens 100K.
+
+A preliminary run at 25 users, reported as an order of magnitude and not as a
+measurement, found `qubo_feasible` costing **~257×** greedy MMR per request while scoring
+roughly three times its NDCG and improving exposure parity. If that survives measurement
+it sharpens §9's conditional considerably: the multiplier is larger than the companion's
+wall-clock figure suggested, and it is applied to the stage that already dominates.
+
+`qubo_tabu` will be reported separately and read differently. It stops on a **wall-clock
+timeout**, so its cost is fixed by construction and its *quality* is what varies with the
+machine — the companion measured it scoring better on a faster CPU at identical settings.
+In a cost study that inverts the usual relationship: a slower machine makes it look cheap
+and bad simultaneously. Every row it produces carries `time_bounded_reranker`, and its
+cost figure is not comparable to a work-bounded method's on the same axis.
+
+## 11. What this enables
+
+Three things this harness makes askable that were not, listed because each is a piece of
+work rather than a wish.
+
+**Where the crossover moves.** The break-even is a property of a machine as well as a
+model. The same sweep on hardware with working RAPL would say whether the *request count*
+transfers even though the absolute costs do not — §8's central untested assumption, and
+the harness already has a `RaplMeter` and a graded-load test to validate the instrument
+before trusting it.
+
+**Whether the reranking share holds at scale.** §7.2 is measured on catalogues up to
+11,268 items. The share falls as retrieval gets more expensive, so there is presumably a
+catalogue size at which reranking stops dominating; the trend is measurable and the
+extrapolation is not.
+
+**Whether accuracy per joule is the wrong objective.** The efficiency frontier here is
+drawn on accuracy and cost. Every reranked configuration falls behind it because fairness
+is not an axis, which is a limitation of the plot rather than a finding about reranking.
+A three-dimensional frontier over accuracy, cost and exposure parity would say which
+configurations are worth deploying *once fairness is a stated requirement* — and §7.6
+already suggests the answer is counterintuitive, since the cheapest depth is also the
+fairest and the most accurate.
+
+## 12. Reproducing
 
 ```bash
 # §5 -- the energy-axis check. Two minutes, no dataset needed.
