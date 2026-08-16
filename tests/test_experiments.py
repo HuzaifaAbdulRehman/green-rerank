@@ -16,7 +16,15 @@ import pytest
 
 from experiments import manifest
 from experiments.analyse import breakeven_table, cost_table, label_of, load_runs, rerank_share
-from experiments.sweep import DEFAULTS, Cell, cells, load_config, viability
+from experiments.sweep import (
+    DEFAULTS,
+    Cell,
+    _append,
+    _completed,
+    cells,
+    load_config,
+    viability,
+)
 from green_rerank.data import synthetic
 
 # --------------------------------------------------------------------------- config
@@ -108,6 +116,108 @@ class TestGrid:
         # producing exactly the grid it produced then.
         config = {**DEFAULTS, "catalogues": ["a"], "families": ["f"], "repeats": 1}
         assert [c.n_candidates for c in cells(config)] == [DEFAULTS["n_candidates"]]
+
+
+class TestResume:
+    """Resume decides what gets measured, and both of its failures are silent.
+
+    Skipping too much leaves a results directory that looks complete and is missing
+    cells; skipping too little re-measures work already done and, because repeat is part
+    of the key, appends duplicate rows that the analysis would treat as independent
+    observations and fold into the uncertainty.
+    """
+
+    @staticmethod
+    def _write(path: Path, rows: list[dict]) -> None:
+        pd.DataFrame(rows).to_csv(path, index=False)
+
+    def test_a_missing_file_means_nothing_is_done(self, tmp_path: Path):
+        assert _completed(tmp_path / "absent.csv") == set()
+
+    def test_completed_cells_round_trip_through_the_csv(self, tmp_path: Path):
+        path = tmp_path / "runs.csv"
+        cell = Cell("ml100k", "als", "quota_mmr", 2, 400)
+        self._write(
+            path,
+            [{
+                "dataset": "ml100k", "family": "als", "reranker": "quota_mmr",
+                "repeat": 2, "n_candidates": 400,
+            }],
+        )
+        assert cell.key in _completed(path)
+
+    def test_the_absent_reranker_round_trips(self, tmp_path: Path):
+        """`None` in the config becomes the string `none` in the CSV.
+
+        If those did not resolve to one identity, every no-reranker cell would be
+        re-run on every resume, forever, and the file would fill with duplicates.
+        """
+        path = tmp_path / "runs.csv"
+        self._write(
+            path,
+            [{
+                "dataset": "d", "family": "f", "reranker": "none",
+                "repeat": 0, "n_candidates": 200,
+            }],
+        )
+        assert Cell("d", "f", None, 0, 200).key in _completed(path)
+
+    def test_a_different_depth_is_not_treated_as_done(self, tmp_path: Path):
+        path = tmp_path / "runs.csv"
+        self._write(
+            path,
+            [{
+                "dataset": "d", "family": "f", "reranker": "none",
+                "repeat": 0, "n_candidates": 50,
+            }],
+        )
+        done = _completed(path)
+        assert Cell("d", "f", None, 0, 50).key in done
+        assert Cell("d", "f", None, 0, 800).key not in done
+
+    def test_a_file_without_the_key_columns_is_treated_as_empty(self, tmp_path: Path):
+        # A results file from an older schema cannot be resumed against safely: matching
+        # on the columns it does have would skip cells whose identity has since changed.
+        path = tmp_path / "runs.csv"
+        self._write(path, [{"dataset": "d", "family": "f"}])
+        assert _completed(path) == set()
+
+
+class TestAppend:
+    """Rows are appended after every cell, because a sweep runs for hours."""
+
+    def test_columns_that_appear_later_are_not_dropped(self, tmp_path: Path):
+        """A failed cell carries a `traceback` column a successful one does not.
+
+        Writing with the `csv` module would silently truncate later rows to the first
+        row's fields, so the error explaining a failure would vanish from the file that
+        exists to record it.
+        """
+        path = tmp_path / "runs.csv"
+        _append(path, {"dataset": "d", "status": "ok"})
+        _append(path, {"dataset": "d", "status": "failed", "traceback": "boom"})
+
+        frame = pd.read_csv(path)
+        assert len(frame) == 2
+        assert "traceback" in frame.columns
+        assert frame.traceback.iloc[1] == "boom"
+
+    def test_earlier_rows_keep_their_values_when_the_schema_grows(self, tmp_path: Path):
+        # The reconciliation must widen the table, not rewrite it: an energy-enabled run
+        # partway through a sweep adds channel columns, and the rows measured before it
+        # must keep their costs rather than being realigned onto the new header.
+        path = tmp_path / "runs.csv"
+        _append(path, {"dataset": "d", "cpu_once": 1.5})
+        _append(path, {"dataset": "d", "cpu_once": 2.5, "energy_kwh": 9.0})
+
+        frame = pd.read_csv(path)
+        assert list(frame.cpu_once) == [1.5, 2.5]
+        assert pd.isna(frame.energy_kwh.iloc[0])
+
+    def test_a_list_of_rows_appends_all_of_them(self, tmp_path: Path):
+        path = tmp_path / "readings.csv"
+        _append(path, [{"stage": "train"}, {"stage": "rerank"}])
+        assert list(pd.read_csv(path).stage) == ["train", "rerank"]
 
 
 # ---------------------------------------------------------------------- viability

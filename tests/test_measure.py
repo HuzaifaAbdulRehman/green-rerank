@@ -14,6 +14,7 @@ import pytest
 
 from green_rerank.measure import (
     CompositeMeter,
+    ConditionsMonitor,
     ExclusiveLock,
     MeasurementSession,
     MockMeter,
@@ -386,6 +387,80 @@ class TestPreflight:
         meta = result.as_meta()
         assert meta["power_source"] == "ac"
         assert meta["machine_busy_pct"] == 3.0
+
+
+class TestConditionsMonitor:
+    """The guard that watches conditions *during* a run rather than before it.
+
+    Preflight can only assert that the machine was fit at the start. The failure this
+    catches is the cable coming out at run seven of twenty: the remaining runs are
+    clocked ~2.8x slower, every quality metric stays byte-identical, and the results
+    table looks completely ordinary while the cheap families appear to have got
+    expensive.
+
+    Tested by populating the sample buffers directly. The event cannot be triggered on
+    demand on real hardware, and a monitor that is only ever exercised on a machine
+    where nothing goes wrong is a monitor whose firing path has never run.
+    """
+
+    @staticmethod
+    def _monitor(frequencies, sources=("ac",)):
+        monitor = ConditionsMonitor()
+        monitor.frequencies = list(frequencies)
+        monitor.power_sources = set(sources)
+        return monitor
+
+    def test_a_steady_machine_reports_no_change(self):
+        report = self._monitor([2800.0, 2795.0, 2801.0]).report()
+        assert not report["conditions_changed"]
+        assert not report["throttled"]
+        assert not report["power_source_changed"]
+
+    def test_ordinary_turbo_variation_is_not_called_throttling(self):
+        # Clocks move a few percent under normal thermal behaviour. A guard that fired
+        # on that would be disabled within a day, and then it would catch nothing.
+        report = self._monitor([3600.0, 3500.0, 3450.0, 3550.0]).report()
+        assert not report["throttled"]
+
+    def test_a_drop_to_a_third_is_caught(self):
+        # The measured event: ~3.6 GHz turbo to a pinned 1.297 GHz on battery.
+        report = self._monitor([3600.0, 3600.0, 1297.0, 1297.0]).report()
+        assert report["throttled"]
+        assert report["conditions_changed"]
+        assert report["frequency_drop"] == pytest.approx(1 - 1297 / 3600, abs=1e-3)
+
+    def test_the_cable_coming_out_is_caught_even_at_a_steady_clock(self):
+        """Power source and frequency are independent evidence.
+
+        A machine that switches to battery without the clock having dropped yet is
+        still no longer comparable to the runs before it, and on hardware where psutil
+        reports a static frequency the power channel is the only live signal there is.
+        """
+        report = self._monitor([2800.0] * 4, sources=("ac", "battery")).report()
+        assert report["power_source_changed"]
+        assert report["conditions_changed"]
+        assert not report["throttled"]
+
+    def test_no_frequency_samples_does_not_claim_a_clean_run(self):
+        # Some platforms report no frequency at all. Absence of evidence must not be
+        # recorded as evidence of stability.
+        report = self._monitor([]).report()
+        assert "frequency_drop" not in report
+        assert report["samples"] == 0
+
+    def test_it_starts_and_stops_without_leaving_a_thread(self):
+        import threading
+
+        before = threading.active_count()
+        with ConditionsMonitor(interval=0.01) as monitor:
+            assert monitor._thread is not None
+        # The sampling thread must not outlive the run it was watching.
+        assert threading.active_count() <= before
+
+    def test_stop_returns_the_same_report_as_report(self):
+        monitor = ConditionsMonitor(interval=0.01).start()
+        stopped = monitor.stop()
+        assert set(stopped) == set(monitor.report())
 
 
 class TestExclusiveLock:
