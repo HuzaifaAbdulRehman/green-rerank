@@ -132,6 +132,48 @@ class TestRealCatalogues:
             # scoring against an item that does not exist.
             assert all(0 <= item < dataset.n_items for item in dataset.held_out.values())
 
+    def test_group_labels_are_aligned_with_the_matrix_columns(self):
+        """`groups[i]` must describe `item_ids[i]`, and nothing downstream checks it.
+
+        Every fairness number in this study -- exposure parity improving on 200 of 200
+        users, the whole of claim 2's benefit side -- is computed by looking up
+        `groups[candidate_column]`. Misalign that mapping and the metric still returns a
+        number in the right range, still responds to reranking, and is measuring a
+        permutation of the truth.
+
+        Found by mutation testing: reversing the item order passed to the grouping
+        function left the entire suite green.
+
+        Checked on MovieLens because its groups come from curator genres, which are
+        keyed by item id. The Amazon catalogues use popularity tiers derived from column
+        sums, which cannot be misaligned this way.
+        """
+        import numpy as np
+
+        if "ml100k" not in available():
+            pytest.skip("ml100k is not present on this machine")
+
+        from benchmarks.movielens import genre_groups, load_genres
+
+        dataset = catalogues.load("ml100k")
+        genres = load_genres(catalogues.resolve("ml100k"))
+        expected = genre_groups(genres, list(dataset.item_ids), dataset.stats["n_groups"])
+
+        assert np.array_equal(dataset.groups, expected)
+
+    def test_popularity_tiers_put_the_most_popular_item_in_the_head_tier(self):
+        """The Amazon grouping, checked against the data it claims to describe."""
+        import numpy as np
+
+        names = [n for n in available() if catalogues.get(n).grouping == "popularity tiers"]
+        if not names:
+            pytest.skip("no popularity-tiered catalogue present")
+
+        dataset = catalogues.load(names[0])
+        popularity = np.asarray(dataset.train.sum(axis=0)).ravel()
+        busiest, quietest = int(popularity.argmax()), int(popularity.argmin())
+        assert dataset.groups[busiest] != dataset.groups[quietest]
+
     def test_held_out_items_are_absent_from_training(self):
         names = available()
         if not names:
