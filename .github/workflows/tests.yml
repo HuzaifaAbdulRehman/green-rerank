@@ -40,8 +40,28 @@ jobs:
       # have nothing to do with the code. They run locally, on the quiet machine that
       # produces the results. Deselecting them here is a statement about the runner,
       # not a licence to let them rot -- `make check` runs the full suite.
-      - run: coverage run -m pytest tests/ -m "not timing"
+      # `-rs` prints the reason for every skip. The end-to-end tests need the
+      # `feasible-rerank` checkout, which is private and cannot be cloned here, so this
+      # job is deliberately running a smaller suite than the development machine does.
+      # A green tick over an unstated subset is how coverage quietly disappears, so the
+      # log states it every run.
+      - run: coverage run -m pytest tests/ -m "not timing" -rs
       - run: coverage report
+
+      # Guards the guard. Exactly two things are legitimately unavailable here: the
+      # private companion checkout, and torch (a ~2.5 GB optional extra). Any other
+      # skip -- a broken import, a marker typo, a dependency that quietly vanished --
+      # would otherwise shrink the suite while CI stayed green, which is the failure
+      # mode this whole project is about.
+      - name: assert every skip has an expected reason
+        run: |
+          python -m pytest tests/ -m "not timing" -rs -q 2>&1 | tee pytest.log
+          if grep -E '^SKIPPED' pytest.log \
+             | grep -vE 'feasible-rerank checkout|torch is an optional extra'; then
+            echo "::error::a test was skipped for an unexpected reason (see above)"
+            exit 1
+          fi
+          echo "all skips accounted for"
 
       # The harness must import and measure (in wall-clock-only mode) with no energy
       # backend installed. CI has none, so the run above already proves it; this asserts

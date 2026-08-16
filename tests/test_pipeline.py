@@ -147,6 +147,7 @@ class TestCostArithmetic:
 # ------------------------------------------------------------------------ rerankers
 
 
+@pytest.mark.needs_companion
 class TestRerankers:
     def test_every_reranker_builds_under_its_own_name(self):
         """Also documents a design assumption this test disproved.
@@ -180,6 +181,7 @@ def dataset():
     return synthetic(n_users=60, n_items=40, blocks=4, seed=0)
 
 
+@pytest.mark.needs_companion
 class TestEndToEnd:
     def test_runs_and_costs_every_stage(self, dataset):
         result = run_pipeline(
