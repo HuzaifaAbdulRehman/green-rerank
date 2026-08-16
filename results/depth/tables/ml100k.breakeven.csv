@@ -1,0 +1,16 @@
+a,b,n_requests,lo,hi,replicates_crossing,repeats,stable,cheaper_below,cheaper_above
+popularity,popularity+quota_mmr,,,,0.0,15,False,popularity,popularity
+popularity,itemknn,,,,0.0,15,False,popularity,popularity
+popularity,itemknn+quota_mmr,,,,0.0,15,False,popularity,popularity
+popularity,als,845039.0606623163,257461.81731455092,1871822.1458932965,0.0285,15,False,popularity,als
+popularity,als+quota_mmr,,,,0.0,15,False,popularity,popularity
+popularity+quota_mmr,itemknn,43.6308028236962,15.223958731526421,105.84725832223623,1.0,15,True,popularity+quota_mmr,itemknn
+popularity+quota_mmr,itemknn+quota_mmr,50.68616621630107,33.9663097570381,157.01442221712256,0.294,15,False,popularity+quota_mmr,itemknn+quota_mmr
+popularity+quota_mmr,als,2230.67974530637,807.083362742528,5281.752748313534,1.0,15,True,popularity+quota_mmr,als
+popularity+quota_mmr,als+quota_mmr,1569.302774460311,999.6639492352685,5432.362317433236,0.291,15,False,popularity+quota_mmr,als+quota_mmr
+itemknn,itemknn+quota_mmr,,,,0.0,15,False,itemknn,itemknn
+itemknn,als,126066.05504589228,67175.4330708147,3399412.4999630232,0.8855,15,False,itemknn,als
+itemknn,als+quota_mmr,,,,0.0,15,False,itemknn,itemknn
+itemknn+quota_mmr,als,1970.6834824486607,744.9485107127693,4626.291980366165,1.0,15,True,itemknn+quota_mmr,als
+itemknn+quota_mmr,als+quota_mmr,1388.772420218971,926.2084878585003,4295.347951379768,0.291,15,False,itemknn+quota_mmr,als+quota_mmr
+als,als+quota_mmr,11.609726137996365,1.247283379004051,56.163207642882206,0.619,15,False,als+quota_mmr,als

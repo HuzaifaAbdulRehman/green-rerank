@@ -78,7 +78,36 @@ class TestGrid:
     def test_cell_key_normalises_the_absent_reranker(self):
         # `None` in the config and `"none"` in the CSV must resolve to one identity, or
         # resume would re-run every no-reranker cell forever.
-        assert Cell("a", "f", None, 0).key == ("a", "f", "none", 0)
+        assert Cell("a", "f", None, 0).key == ("a", "f", "none", 0, 200)
+
+    def test_retrieval_depth_is_part_of_a_cell_s_identity(self):
+        """Two depths are two different measurements, not one repeated.
+
+        The reranker's cost scales with its problem size, so a run at depth 50 and one
+        at depth 800 are not interchangeable. If depth were left out of the key, resume
+        would treat the second as already done and the sensitivity study would silently
+        collapse to whichever depth ran first.
+        """
+        assert Cell("a", "f", None, 0, 50).key != Cell("a", "f", None, 0, 800).key
+
+    def test_a_list_of_depths_becomes_a_grid_axis(self):
+        config = {
+            **DEFAULTS,
+            "catalogues": ["a"],
+            "families": ["f"],
+            "rerankers": [None],
+            "n_candidates": [50, 200],
+            "repeats": 2,
+        }
+        grid = cells(config)
+        assert len(grid) == 4
+        assert {c.n_candidates for c in grid} == {50, 200}
+
+    def test_a_scalar_depth_still_means_one_depth(self):
+        # Every config written before the axis existed passes a scalar, and must keep
+        # producing exactly the grid it produced then.
+        config = {**DEFAULTS, "catalogues": ["a"], "families": ["f"], "repeats": 1}
+        assert [c.n_candidates for c in cells(config)] == [DEFAULTS["n_candidates"]]
 
 
 # ---------------------------------------------------------------------- viability

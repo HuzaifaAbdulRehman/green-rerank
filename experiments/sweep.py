@@ -99,14 +99,24 @@ class Cell:
     family: str
     reranker: str | None
     repeat: int
+    #: Retrieval depth, and therefore the reranker's problem size. An axis rather than a
+    #: constant because the reranker's cost scales with it, so "reranking is 90 % of
+    #: serving cost" is a statement about a depth and is not transferable without one.
+    n_candidates: int = 200
 
     @property
-    def key(self) -> tuple[str, str, str, int]:
-        return (self.catalogue, self.family, self.reranker or "none", self.repeat)
+    def key(self) -> tuple[str, str, str, int, int]:
+        return (
+            self.catalogue,
+            self.family,
+            self.reranker or "none",
+            self.repeat,
+            int(self.n_candidates),
+        )
 
     def __str__(self) -> str:
         suffix = f"+{self.reranker}" if self.reranker else ""
-        return f"{self.catalogue}/{self.family}{suffix} #{self.repeat}"
+        return f"{self.catalogue}/{self.family}{suffix} c={self.n_candidates} #{self.repeat}"
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
@@ -165,6 +175,11 @@ def cells(config: dict[str, Any]) -> list[Cell]:
             f"families are {sorted(config['families'])}"
         )
 
+    # A scalar stays a scalar in every config written so far; a list turns retrieval
+    # depth into a grid axis for the sensitivity study.
+    depths = config["n_candidates"]
+    depths = depths if isinstance(depths, list) else [depths]
+
     out = []
     for repeat in range(config["repeats"]):
         for catalogue in config["catalogues"]:
@@ -172,7 +187,8 @@ def cells(config: dict[str, Any]) -> list[Cell]:
                 if family in only_on and catalogue not in only_on[family]:
                     continue
                 for reranker in config["rerankers"]:
-                    out.append(Cell(catalogue, family, reranker, repeat))
+                    for depth in depths:
+                        out.append(Cell(catalogue, family, reranker, repeat, int(depth)))
     return out
 
 
@@ -181,11 +197,11 @@ def _completed(path: Path) -> set[tuple[str, str, str, int]]:
     if not path.exists():
         return set()
     frame = pd.read_csv(path)
-    needed = {"dataset", "family", "reranker", "repeat"}
+    needed = {"dataset", "family", "reranker", "repeat", "n_candidates"}
     if not needed <= set(frame.columns):
         return set()
     return {
-        (str(r.dataset), str(r.family), str(r.reranker), int(r.repeat))
+        (str(r.dataset), str(r.family), str(r.reranker), int(r.repeat), int(r.n_candidates))
         for r in frame.itertuples()
     }
 
@@ -297,6 +313,7 @@ def _run_cell(
         "family": cell.family,
         "reranker": cell.reranker or "none",
         "repeat": cell.repeat,
+        "n_candidates": cell.n_candidates,
     }
     try:
         dataset = catalogues.load(cell.catalogue)
@@ -310,7 +327,7 @@ def _run_cell(
             dataset,
             family,
             reranker=cell.reranker,
-            n_candidates=config["n_candidates"],
+            n_candidates=cell.n_candidates,
             k=config["k"],
             n_users=config["n_users"],
             # Varied with the repeat so that repeats resample the users. Holding the
@@ -392,6 +409,7 @@ def _append_per_user(path: Path, result, cell: Cell) -> None:
         ("family", cell.family),
         ("reranker", cell.reranker or "none"),
         ("repeat", cell.repeat),
+        ("n_candidates", cell.n_candidates),
     ):
         frame[key] = value
     _append(path, frame.to_dict("records"))

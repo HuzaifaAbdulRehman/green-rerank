@@ -450,6 +450,53 @@ magnitude more frequently deliver no accuracy that a paired test can detect. Rep
 means alone would have hidden it — the raw NDCG figures (`als` 0.0685 against
 `popularity` 0.0527) look like a 30 % improvement.
 
+### 7.6 How much of §7.2 is an artefact of retrieval depth?
+
+The reranking-cost claim is measured at one retrieval depth, and the reranker's cost
+scales with its problem size — so as stated it is a claim about 200 candidates. A reader
+is entitled to ask whether the headline share is a consequence of that choice. Testing it
+was a matter of varying depth over a 16× range with everything else fixed: 90 runs on
+MovieLens 100K, three families, three repeats.
+
+**Reranker share of per-request cost:**
+
+| depth | `popularity` | `itemknn` | `als` |
+|-------|--------------|-----------|-------|
+| 50 | 85.1 % | 75.9 % | 84.3 % |
+| 100 | 91.8 % | 87.1 % | 91.3 % |
+| 200 | 95.8 % | 93.7 % | 95.4 % |
+| 400 | 98.1 % | 97.2 % | 98.0 % |
+| 800 | 99.1 % | 98.8 % | 98.6 % |
+
+**The share is depth-dependent, so §7.2's range is narrower than it first appears.** The
+honest statement is: at the depth this study used, reranking is 80–98 % of serving cost;
+across a 16× range of depth it is 76–99 %. The qualitative claim — that the reranker
+dominates per-request cost — survives everywhere tested, but the specific percentage
+should always be quoted with its depth.
+
+What makes the sensitivity worth its own section is the rest of the table. Fitting cost
+against depth on log axes gives **O(n^1.20) to O(n^1.28)** — superlinear, as expected from
+extracting an n × n similarity block per user. Over the range tested, cost rises 35×.
+
+And it buys nothing:
+
+| depth | exposure parity (lower better) | NDCG@10 (`popularity`) |
+|-------|-------------------------------|------------------------|
+| 50 | 0.2540 | 0.0551 |
+| 100 | 0.2555 | 0.0531 |
+| 200 | 0.2540 | 0.0541 |
+| 400 | 0.2535 | 0.0526 |
+| 800 | 0.2540 | 0.0463 |
+
+Exposure parity is **flat** — 0.2535 to 0.2555 across the whole range, well inside
+run-to-run noise. Accuracy *falls*. So retrieving 800 candidates instead of 50 costs 35×
+more in the reranking stage, delivers no measurable fairness improvement, and loses
+NDCG.
+
+That is the most directly actionable recommendation in this report: **when reranking for
+exposure fairness, retrieve shallowly.** The fairness objective is satisfied by the head
+of the candidate list, and everything below it is paid for and discarded.
+
 ## 8. Threats to validity
 
 **One machine.** Every figure is from a single laptop. The break-even *request counts*
@@ -465,9 +512,10 @@ implementation would shift the absolute numbers.
 noisy per user. It is the companion project's protocol, kept deliberately so the two are
 comparable.
 
-**The reranker's problem size is fixed** at 200 candidates. Its cost scales with that,
-so the reranking share in §7.2 is a statement about a 200-candidate reranker, not about
-reranking in general.
+**The reranker's problem size** was fixed at 200 candidates for the main sweep. §7.6
+measures the sensitivity directly rather than leaving it as a caveat: the share moves
+from 76 % to 99 % across a 16× range of depth, so the qualitative claim holds throughout
+but any specific percentage must be quoted with its depth.
 
 **No LLM family.** Deliberately omitted with the slot documented: its energy burns in a
 datacentre that cannot be instrumented from here, and an API-derived estimate placed

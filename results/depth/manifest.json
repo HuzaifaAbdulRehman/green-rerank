@@ -1,0 +1,97 @@
+{
+  "created_utc": "2026-08-16T11:15:54+00:00",
+  "green_rerank": {
+    "revision": "5de9ea50110a67c016eaa6d3894ca00858b41ffe",
+    "branch": "master",
+    "dirty": true,
+    "tree_dirty": true
+  },
+  "companion": {
+    "revision": "1986cbce07cea71f0db215e4ac8750f71757366e",
+    "branch": "main",
+    "dirty": false,
+    "tree_dirty": false,
+    "path": "D:\\Programming\\Projects\\qubo-rerank"
+  },
+  "packages": {
+    "numpy": "2.2.6",
+    "scipy": "1.15.3",
+    "pandas": "2.3.3",
+    "torch": "2.13.0+cpu",
+    "psutil": "7.2.2",
+    "codecarbon": "3.3.0",
+    "dimod": "0.12.22",
+    "dwave-neal": "0.6.0",
+    "dwave-samplers": "1.8.0"
+  },
+  "machine": {
+    "system": "Windows",
+    "release": "10",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 142 Stepping 10, GenuineIntel",
+    "python": "3.10.11",
+    "cpu_logical": 8,
+    "cpu_physical": 4,
+    "cpu_mhz_nominal": 1896.0,
+    "cpu_mhz_at_start": 1696.0,
+    "ram_bytes": 17031348224
+  },
+  "clock_quantum_seconds": 0.015625,
+  "config": {
+    "name": "depth",
+    "catalogues": [
+      "ml100k"
+    ],
+    "families": [
+      "popularity",
+      "itemknn",
+      "als"
+    ],
+    "rerankers": [
+      null,
+      "quota_mmr"
+    ],
+    "n_users": 200,
+    "n_candidates": [
+      50,
+      100,
+      200,
+      400,
+      800
+    ],
+    "k": 10,
+    "repeats": 3,
+    "seed": 0,
+    "lam": 0.3,
+    "mu": 1.0,
+    "require_mains": true,
+    "max_busy_pct": 25.0,
+    "energy": false,
+    "min_users": 50,
+    "min_items": 50,
+    "family_kwargs": {},
+    "only_on": {},
+    "trust_busy_pct": 15.0
+  },
+  "preflight": {
+    "power_source": "ac",
+    "machine_busy_pct": 0.7,
+    "exclusive": true,
+    "warnings": []
+  },
+  "trustworthy": true,
+  "conditions": {
+    "power_sources_seen": [
+      "ac"
+    ],
+    "power_source_changed": false,
+    "samples": 307,
+    "cpu_mhz_max": 1696.0,
+    "cpu_mhz_min": 1696.0,
+    "cpu_mhz_mean": 1696.0,
+    "frequency_drop": 0.0,
+    "throttled": false,
+    "conditions_changed": false
+  },
+  "skipped_catalogues": {}
+}

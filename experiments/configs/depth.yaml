@@ -1,0 +1,23 @@
+# Sensitivity of the reranking-cost claim to retrieval depth.
+#
+# Section 7.2 reports that the fairness reranker takes 80-98 % of per-request cost. That
+# is measured at one retrieval depth, and the reranker's cost scales with its problem
+# size -- so as stated it is a claim about 200 candidates, and a reader would be right to
+# ask whether the headline share is an artefact of that choice.
+#
+# This varies depth over a 16x range with everything else held fixed. If the share is
+# roughly flat, the claim generalises; if it climbs steeply, the honest statement is
+# narrower and this table is what makes it so. Either outcome is reportable, which is
+# the point of running it.
+#
+# MovieLens 100K only, and the three cheap families: the question is about the reranker,
+# and adding GRU4Rec would spend forty minutes per repeat re-measuring a training cost
+# that has nothing to do with it.
+name: depth
+catalogues: [ml100k]
+families: [popularity, itemknn, als]
+rerankers: [null, quota_mmr]
+n_candidates: [50, 100, 200, 400, 800]
+n_users: 200
+k: 10
+repeats: 3

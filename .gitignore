@@ -27,7 +27,8 @@ results/**/.measure.lock
 results/plumbing/
 
 # results/ is deliberately NOT ignored: the CSVs and figures are the point of the
-# repository, and a reader should see the numbers without a rerun. They are kilobytes.
+# repository, and a reader should see the numbers without rerunning an hour of
+# measurement on hardware they do not have. Currently ~8 MB, most of it figures.
 
 .vscode/
 .idea/

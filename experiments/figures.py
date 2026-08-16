@@ -372,18 +372,27 @@ def all_figures(directory: Path, allow_untrustworthy: bool = False) -> list[Path
         made.append(efficiency_frontier(runs, catalogue, out))
         made.append(retraining_curves(runs, catalogue, out))
 
-        # Every pair whose lines actually cross is worth its own panel; pairs where one
-        # family dominates are already legible in the cost-curve figure.
+        # A panel per pair whose crossover is *stable*. Pairs where one family dominates
+        # have nothing to show, and pairs whose crossing survives only a minority of
+        # bootstrap replicates should not be given a figure at all: a plotted crossing
+        # reads as a finding however the caption is worded, and drawing thirty of them
+        # would bury the handful that are real.
         frame = runs[runs.dataset == catalogue]
         samples = cost_samples(frame)
+        skipped = 0
         for i, a in enumerate(samples):
             for b in samples[i + 1 :]:
                 result = crossover_interval(a, b, n_bootstrap=400)
-                if result.n_requests is None:
+                if not result.is_stable:
+                    skipped += result.n_requests is not None
                     continue
                 path = breakeven_band(runs, catalogue, a.label, b.label, out)
                 if path is not None:
                     made.append(path)
+        if skipped:
+            # Stated rather than silent: a reader counting figures should know that
+            # crossings were found and deliberately not drawn.
+            print(f"  {catalogue}: {skipped} unstable crossover(s) not plotted")
     return made
 
 
