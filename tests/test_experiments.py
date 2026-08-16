@@ -481,6 +481,7 @@ def _runs(tmp_path: Path, trustworthy: bool = True, repeats: int = 4) -> Path:
                         # only `cpu_per_request` is divided. A fixture that stored them
                         # already divided would let a missing division pass unnoticed.
                         "n_users": served,
+                        "n_candidates": 200,
                         "cpu_once": once * (1 + 0.05 * rng.standard_normal()),
                         "cpu_per_request": (per_request + extra),
                         "cpu_train": once,
@@ -635,6 +636,111 @@ class TestPairedComparison:
 
         with pytest.raises(SystemExit, match="not among"):
             compare_all(pd.read_csv(_per_user(tmp_path)), reference="nope")
+
+
+class TestTableFormatting:
+    """`_cell` chooses a format per column, and the wrong one loses information.
+
+    Written rather than delegated to `DataFrame.to_markdown` because that needs an
+    extra dependency to draw pipes and applies one float format to every column. Here a
+    cost spanning 1e-6 to 1e2 needs scientific notation while a request count needs
+    thousands separators -- `13736` and `137360` are genuinely hard to tell apart in a
+    column of a report.
+    """
+
+    def test_costs_keep_their_exponent(self):
+        from experiments.analyse import _cell
+
+        # Rounded to a fixed number of decimals, every per-request cost in this study
+        # would print as 0.000.
+        assert _cell("cpu_per_request", 1.86e-4) == "1.860e-04"
+
+    def test_request_counts_are_grouped(self):
+        from experiments.analyse import _cell
+
+        assert _cell("n_requests", 112730.0) == "112,730"
+
+    def test_shares_are_percentages(self):
+        from experiments.analyse import _cell
+
+        assert _cell("rerank_share_of_serving", 0.937) == "93.7%"
+        assert _cell("spread_once", 0.12) == "12.0%"
+
+    def test_missing_values_are_visible_rather_than_blank(self):
+        from experiments.analyse import _cell
+
+        # A blank cell reads as zero; a crossover that does not exist is not a
+        # crossover of zero requests.
+        assert _cell("n_requests", None) == "--"
+        assert _cell("n_requests", float("nan")) == "--"
+
+    def test_booleans_read_as_words(self):
+        from experiments.analyse import _cell
+
+        assert _cell("stable", True) == "yes"
+        assert _cell("stable", False) == "no"
+
+    def test_an_empty_table_says_so(self):
+        from experiments.analyse import _markdown
+
+        assert "no rows" in _markdown(pd.DataFrame())
+
+    def test_the_table_is_rectangular(self):
+        from experiments.analyse import _markdown
+
+        text = _markdown(pd.DataFrame([{"a": 1, "b": 2.5}, {"a": 30, "b": 4.0}]))
+        lines = [ln for ln in text.splitlines() if ln.strip()]
+        assert len({len(ln) for ln in lines}) == 1, "column widths do not line up"
+
+
+class TestReportingDrivers:
+    """Smoke tests for the paths that run at report time.
+
+    Their content is not worth asserting -- these functions index columns by name, and
+    what is worth asserting is that they still run against real result shapes. A renamed
+    column breaks them silently at exactly the moment the numbers are wanted.
+    """
+
+    def test_analyse_writes_every_table(self, tmp_path: Path):
+        from experiments.analyse import analyse
+
+        directory = _runs(tmp_path, repeats=4)
+        tables = analyse(directory)
+
+        expected = {"cost", "breakeven", "rerank_share", "frontier", "regimes", "retraining"}
+        assert {key.split(".", 1)[1] for key in tables} == expected
+        assert (directory / "tables" / "tables.md").exists()
+        for key in tables:
+            assert (directory / "tables" / f"{key}.csv").exists()
+
+    def test_headline_runs_against_a_real_results_directory(self, tmp_path: Path, capsys):
+        from experiments.analyse import analyse
+        from experiments.headline import (
+            breakeven,
+            frontier,
+            provenance,
+            reranking,
+            retraining,
+            spread,
+        )
+
+        directory = _runs(tmp_path, repeats=4)
+        analyse(directory)
+        runs = load_runs(directory)
+
+        for section in (provenance, breakeven, frontier, retraining):
+            section(directory, runs) if section is provenance else section(directory)
+        spread(runs)
+        reranking(runs)
+
+        out = capsys.readouterr().out
+        assert "runs" in out and "stable crossovers" in out
+
+    def test_headline_refuses_untrustworthy_rows_like_everything_else(self, tmp_path: Path):
+        from experiments.headline import load_runs as headline_load
+
+        with pytest.raises(SystemExit, match="untrustworthy"):
+            headline_load(_runs(tmp_path, trustworthy=False))
 
 
 class TestFigures:

@@ -108,13 +108,17 @@ def reranking(runs: pd.DataFrame) -> None:
     reranked["share"] = reranked.cpu_rerank / reranked.serving
     reranked["multiplier"] = reranked.serving / (reranked.serving - reranked.cpu_rerank)
 
-    grouped = reranked.groupby(["dataset", "family"]).agg(
-        share=("share", "median"), multiplier=("multiplier", "median"),
-        depth=("n_candidates", "median"),
-    )
+    # Retrieval depth became a recorded axis after the first sweeps, and the share
+    # depends on it -- so it is printed when present rather than assumed, and a results
+    # directory written before the axis existed still reports its shares.
+    aggregations = {"share": ("share", "median"), "multiplier": ("multiplier", "median")}
+    if "n_candidates" in reranked.columns:
+        aggregations["depth"] = ("n_candidates", "median")
+
+    grouped = reranked.groupby(["dataset", "family"]).agg(**aggregations)
     for (catalogue, family), row in grouped.iterrows():
-        print(f"  {catalogue:<14} {family:<11} {row.share:6.1%}  x{row.multiplier:5.1f}  "
-              f"(depth {row.depth:.0f})")
+        depth = f"  (depth {row.depth:.0f})" if "depth" in grouped.columns else ""
+        print(f"  {catalogue:<14} {family:<11} {row.share:6.1%}  x{row.multiplier:5.1f}{depth}")
     print(f"\n  range: {grouped.share.min():.1%} - {grouped.share.max():.1%}, "
           f"multiplier x{grouped.multiplier.min():.1f} - x{grouped.multiplier.max():.1f}")
 
