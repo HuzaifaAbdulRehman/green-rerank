@@ -429,11 +429,18 @@ Non-dominated configurations at N = 100,000 requests:
 | `luxury_beauty` | `popularity`, `itemknn` |
 | `gift_cards` | `itemknn` |
 
-**ItemKNN and MultVAE are dominated on MovieLens 100K** — they cost more than
-recommending the most popular items to everyone and score lower. On that catalogue they
-should not be deployed at all, at any traffic level. That is a stronger statement than
-"they scored slightly worse", and it is invisible in a table that reports accuracy and
-energy in separate columns.
+**ItemKNN and MultVAE are dominated on MovieLens 100K.** At 100,000 requests ItemKNN
+costs 18.75 CPU-seconds against popularity's 11.40 (1.65×) for a median NDCG of 0.0471
+against 0.0527; MultVAE costs 69.48 (6.10×) for 0.0448. On that catalogue neither should
+be deployed at any traffic level.
+
+The frontier is computed on *median* accuracy, and §7.5 finds that neither family's
+accuracy difference from popularity is statistically detectable per user. That does not
+weaken the conclusion — it strengthens it. Domination normally rests on being worse on
+one axis and no better on the other, which invites the objection that the accuracy gap is
+noise. Here the accuracy gap being indistinguishable is the point: at **no detectable
+difference in accuracy**, ItemKNN costs 1.65× more and MultVAE 6.10× more. The
+recommendation follows from the cost axis alone, where the measurement is solid.
 
 `popularity` appears on four of five frontiers, always as the cheap endpoint.
 
