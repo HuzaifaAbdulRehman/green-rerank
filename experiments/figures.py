@@ -360,12 +360,83 @@ def retraining_curves(runs, catalogue: str, out: Path, n_requests: float = 1_000
     return path
 
 
+def depth_sensitivity(runs, out: Path) -> Path | None:
+    """Cost, fairness and accuracy against retrieval depth -- the §7.6 figure.
+
+    Three panels sharing one x axis, because the finding is the *contrast* between them:
+    cost climbs superlinearly, fairness does not move at all, and accuracy falls. Any one
+    panel alone reads as an ordinary sensitivity curve; together they say that depth is
+    paid for and discarded.
+
+    Returns ``None`` for a results directory with only one depth, which is every
+    directory except the one produced by ``configs/depth.yaml``.
+    """
+    if "n_candidates" not in runs.columns or runs.n_candidates.nunique() < 3:
+        return None
+
+    reranked = runs[runs.reranker != "none"].copy()
+    if reranked.empty:
+        return None
+    labels = [s.label for s in PER_REQUEST_STAGES]
+    reranked["serving"] = reranked[[f"cpu_{x}" for x in labels]].sum(axis=1)
+    reranked["share"] = reranked.cpu_rerank / reranked.serving
+
+    figure, axes = plt.subplots(3, 1, figsize=(7.5, 9), sharex=True)
+    families = sorted(reranked.family.unique())
+
+    for family in families:
+        sub = reranked[reranked.family == family].groupby("n_candidates")
+        depths = sorted(sub.groups)
+        colour = _colour(family)
+        axes[0].plot(depths, sub.cpu_rerank.median(), "o-", color=colour, label=family)
+        axes[1].plot(depths, sub.share.median() * 100, "o-", color=colour, label=family)
+        axes[2].plot(depths, sub.ndcg.median(), "o-", color=colour, label=family)
+
+    # Fairness, on the panel where its flatness is the point. Plotted across families
+    # together because they agree to within noise, which is itself the observation.
+    parity = reranked.groupby("n_candidates").exposure_parity.median()
+    twin = axes[1].twinx()
+    twin.plot(list(parity.index), parity.to_numpy(), "s--", color="black", alpha=0.55,
+              label="exposure parity")
+    twin.set_ylabel("exposure parity (lower better)", fontsize=9)
+    # A y-range wide enough to show that a flat line is genuinely flat rather than
+    # merely rescaled to look flat.
+    twin.set_ylim(0, max(0.5, parity.max() * 1.6))
+    twin.legend(fontsize=8, loc="center right")
+
+    axes[0].set_yscale("log")
+    axes[0].set_ylabel("rerank stage (CPU-seconds)")
+    axes[0].set_title(
+        "Retrieval depth is paid for and discarded\n"
+        "cost climbs superlinearly; fairness does not move; accuracy falls"
+    )
+    axes[1].set_ylabel("rerank share of serving (%)")
+    axes[2].set_ylabel("NDCG@10")
+    axes[2].set_xlabel("retrieval depth (candidates per user)")
+    axes[2].set_xscale("log")
+
+    for axis in axes:
+        axis.grid(True, which="both", alpha=0.15)
+    axes[0].legend(fontsize=8)
+
+    path = out / "depth_sensitivity.png"
+    figure.tight_layout()
+    figure.savefig(path, dpi=160)
+    plt.close(figure)
+    return path
+
+
 def all_figures(directory: Path, allow_untrustworthy: bool = False) -> list[Path]:
     runs = load_runs(directory, allow_untrustworthy)
     out = directory / "figures"
     out.mkdir(parents=True, exist_ok=True)
 
     made: list[Path] = []
+    # Depth is a property of the whole directory, not of one catalogue.
+    depth_figure = depth_sensitivity(runs, out)
+    if depth_figure is not None:
+        made.append(depth_figure)
+
     for catalogue in runs["dataset"].unique():
         made.append(cost_curves(runs, catalogue, out))
         made.append(stage_breakdown(runs, catalogue, out))

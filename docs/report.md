@@ -371,6 +371,11 @@ energy table can produce.
 A second stable crossing on the same catalogue: ALS against MultVAE at N = 2,639
 [361 – 5,248], all replicates crossing.
 
+![ItemKNN against ALS on MovieLens 100K](../results/main/figures/ml100k.breakeven.itemknn_vs_als.png)
+
+The shaded band is the bootstrap interval and the faint lines are the individual
+repeats, so the width the band claims is visibly earned rather than asserted.
+
 **The more important result is how few pairs cross at all.** Of 45 configuration pairs on
 MovieLens 100K, only 13 produce a crossover this analysis is willing to report. The rest
 are either outright domination — one family cheaper at every volume, which is a finding,
@@ -402,6 +407,12 @@ One caveat the row-level records make visible. `gift_cards` has 147 items, so th
 size as the rest and are not strictly comparable to them. They are kept because the
 qualitative claim is unaffected and the difference is recorded on every affected row
 rather than being absorbed into an average.
+
+![Where per-request cost goes](../results/main/figures/ml100k.stages.png)
+
+The left panel is share on a linear axis and the right is absolute cost on a log one,
+because a stacked bar on a log axis has segment widths that mean nothing -- and share is
+exactly what this claim is about.
 
 The share has structure rather than being a constant: it falls as retrieval itself gets
 more expensive. The reranker's cost is set by its problem size — 200 candidates, k = 10 —
@@ -443,6 +454,8 @@ difference in accuracy**, ItemKNN costs 1.65× more and MultVAE 6.10× more. The
 recommendation follows from the cost axis alone, where the measurement is solid.
 
 `popularity` appears on four of five frontiers, always as the cheap endpoint.
+
+![Efficiency frontier, MovieLens 100K](../results/main/figures/ml100k.frontier.png)
 
 The frontier's axes are accuracy and cost only, so every reranked configuration except
 one falls behind it — reranking buys exposure parity, which is not an axis here. The
@@ -560,6 +573,8 @@ Exposure parity is **flat** — 0.2535 to 0.2555 across the whole range, well in
 run-to-run noise. Accuracy *falls*. So retrieving 800 candidates instead of 50 costs 35×
 more in the reranking stage, delivers no measurable fairness improvement, and loses
 NDCG.
+
+![Retrieval depth is paid for and discarded](../results/depth/figures/depth_sensitivity.png)
 
 That is the most directly actionable recommendation in this report: **when reranking for
 exposure fairness, retrieve shallowly.** The fairness objective is satisfied by the head

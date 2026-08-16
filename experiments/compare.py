@@ -193,8 +193,14 @@ def main() -> None:
     parser.add_argument("--results", required=True, type=Path)
     parser.add_argument(
         "--reference",
-        default="itemknn",
-        help="the configuration every other one is compared against",
+        # The baseline every reported comparison in the study uses. It was `itemknn`
+        # while the driver was being written, which meant re-running the analysis with
+        # the documented command reproduced a different table from the report's.
+        default="popularity",
+        help=(
+            "the configuration every other one is compared against "
+            "(default: popularity, the baseline the report uses)"
+        ),
     )
     parser.add_argument("--allow-untrustworthy", action="store_true")
     args = parser.parse_args()
