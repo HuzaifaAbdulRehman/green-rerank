@@ -234,6 +234,99 @@ class TestAnalysis:
         assert label_of("als", "quota_mmr") == "als+quota_mmr"
 
 
+def _per_user(tmp_path: Path, n_users: int = 200, repeats: int = 2) -> Path:
+    """Per-user metrics where itemknn genuinely beats popularity on most users.
+
+    200 users, matching the sweep's own setting, and the number is not decorative. At
+    40 users a hit-rate difference of 0.45 against 0.15 leaves only ~15 users decided
+    and reaches p = 0.07 -- an effect that is unambiguously real in the generator and
+    still not detectable in the sample. That is the whole reason accuracy needs a paired
+    test rather than a comparison of means, and the reason the sweep serves 200.
+    """
+    rng = np.random.default_rng(1)
+    rows = []
+    for repeat in range(repeats):
+        users = rng.choice(500, size=n_users, replace=False)
+        for family, hit_rate in (("itemknn", 0.45), ("popularity", 0.15)):
+            hits = rng.random(n_users) < hit_rate
+            for user, hit in zip(users, hits, strict=True):
+                rows.append(
+                    {
+                        "user_row": int(user),
+                        "dataset": "d",
+                        "family": family,
+                        "reranker": "none",
+                        "repeat": repeat,
+                        "ndcg": float(hit),
+                        "recall": float(hit),
+                        "exposure_parity": 0.5 if family == "itemknn" else 0.9,
+                        "intra_list_similarity": np.nan,
+                    }
+                )
+    path = tmp_path / "per_user.csv"
+    pd.DataFrame(rows).to_csv(path, index=False)
+    return path
+
+
+class TestPairedComparison:
+    """Accuracy has to be held to the same standard of evidence as cost."""
+
+    def test_a_real_difference_is_detected_with_its_effect_size(self, tmp_path: Path):
+        from experiments.compare import compare_all
+
+        table = compare_all(pd.read_csv(_per_user(tmp_path)), reference="itemknn")
+        row = table[(table.config == "popularity") & (table.metric == "ndcg")].iloc[0]
+        assert row["worse"] > row["better"]
+        assert row["significant"]
+        # Effect size is reported, not only the verdict.
+        assert row["ci_lo"] <= row["median_diff"] <= row["ci_hi"]
+
+    def test_repeats_are_not_pooled(self, tmp_path: Path):
+        """Pooling repeats would compare a user against a different user.
+
+        Each repeat resamples the served users, so concatenating them puts the same
+        `user_row` in the table more than once with different partners. The merge would
+        then pair rows across repeats and produce a difference distribution that looks
+        entirely ordinary and means nothing.
+        """
+        from experiments.compare import compare_all
+
+        table = compare_all(
+            pd.read_csv(_per_user(tmp_path, n_users=200, repeats=3)), reference="itemknn"
+        )
+        assert (table["n_users"] <= 200).all()
+
+    def test_a_metric_only_one_side_computed_is_skipped(self, tmp_path: Path):
+        """Intra-list similarity exists only for runs that built a similarity matrix.
+
+        Comparing a reranked run against a plain one on it yields all-NaN. Reporting
+        that as "no detectable difference" would state a null result about a comparison
+        that never happened.
+        """
+        from experiments.compare import compare_all
+
+        table = compare_all(pd.read_csv(_per_user(tmp_path)), reference="itemknn")
+        assert "intra_list_similarity" not in set(table["metric"])
+
+    def test_lower_is_better_metrics_count_the_right_way(self, tmp_path: Path):
+        """Getting this backwards inverts the verdict while every number stays correct.
+
+        itemknn has the lower exposure-parity score here, and lower is better for that
+        metric, so popularity must be recorded as *worse* despite its larger value.
+        """
+        from experiments.compare import compare_all
+
+        table = compare_all(pd.read_csv(_per_user(tmp_path)), reference="itemknn")
+        row = table[table.metric == "exposure_parity"].iloc[0]
+        assert row["worse"] > row["better"]
+
+    def test_an_unknown_reference_lists_the_available_ones(self, tmp_path: Path):
+        from experiments.compare import compare_all
+
+        with pytest.raises(SystemExit, match="not among"):
+            compare_all(pd.read_csv(_per_user(tmp_path)), reference="nope")
+
+
 class TestFigures:
     """Smoke tests only.
 

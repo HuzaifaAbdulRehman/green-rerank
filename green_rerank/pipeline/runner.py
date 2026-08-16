@@ -44,6 +44,16 @@ class PipelineResult:
     readings: list[Reading]
     final_items: np.ndarray
     metrics: dict[str, float] = field(default_factory=dict)
+
+    #: Per-user metric vectors, aligned with :attr:`user_rows`. Carried so that accuracy
+    #: differences can be tested on the *same users* rather than compared as means.
+    per_user: dict[str, np.ndarray] = field(default_factory=dict)
+
+    #: The users served, in the order every per-user vector uses. Without this the
+    #: vectors cannot be paired across two runs, and pairing the wrong users together
+    #: would produce a difference distribution that looks entirely normal.
+    user_rows: np.ndarray | None = None
+
     notes: dict[str, Any] = field(default_factory=dict)
 
     #: Default cost field. ``cpu_seconds_each`` rather than ``cpu_seconds`` because
@@ -254,7 +264,7 @@ def run_pipeline(
         )
 
     # ------------------------------------------------- 5. score, outside the window
-    metrics = score(
+    metrics, per_user = score(
         dataset=dataset,
         recommendations=recommendations,
         selections=selections,
@@ -280,6 +290,8 @@ def run_pipeline(
         readings=list(session.readings[first_reading:]),
         final_items=final_items,
         metrics=metrics,
+        per_user=per_user,
+        user_rows=user_rows,
         notes=notes,
     )
 
@@ -433,4 +445,26 @@ def score(
     }
     if ils:
         metrics["intra_list_similarity"] = float(np.mean(ils))
-    return metrics
+
+    # Kept alongside the means, because a mean cannot be tested.
+    #
+    # Two families' NDCG differing by 0.01 says nothing on its own: the question is
+    # whether it differs *per user*, on the same users, more often than not. That is a
+    # paired comparison and it needs the vector, which the mean has already discarded.
+    # Cost figures in this project carry bootstrap intervals; reporting accuracy as a
+    # bare mean beside them would apply two different standards of evidence within one
+    # table.
+    #
+    # `catalogue_coverage` and `gini` are deliberately absent: they are properties of
+    # the whole set of recommendation lists, not of any one user, so there is no
+    # per-user value to pair and averaging one into existence would invent data.
+    per_user: dict[str, np.ndarray] = {
+        "ndcg": np.asarray(ndcg_truth, dtype=float),
+        "ndcg_vs_retrieval": np.asarray(ndcg_retrieval, dtype=float),
+        "recall": np.asarray(recall, dtype=float),
+        "exposure_parity": np.asarray(parity, dtype=float),
+    }
+    if ils:
+        per_user["intra_list_similarity"] = np.asarray(ils, dtype=float)
+
+    return metrics, per_user

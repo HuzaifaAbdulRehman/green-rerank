@@ -322,6 +322,7 @@ def _run_cell(
         row["n_train_users"] = dataset.n_users
         row["density"] = dataset.stats.get("density")
         _append_readings(readings_path, result, cell)
+        _append_per_user(out_dir / "per_user.csv", result, cell)
         print(
             f"      ndcg={result.metrics['ndcg']:.4f}  "
             f"once={result.once_cost():.4f}s  "
@@ -361,6 +362,28 @@ def _append_readings(path: Path, result, cell: Cell) -> None:
         )
         rows.append(row)
     _append(path, rows)
+
+
+def _append_per_user(path: Path, result, cell: Cell) -> None:
+    """Persist one row per served user, for paired accuracy comparisons.
+
+    Written with the user's row index rather than its position in the sample. Two runs
+    of the same cell draw the same users but the *positions* mean nothing across runs,
+    so pairing on position would silently compare different people -- producing a
+    difference distribution that looks entirely normal.
+    """
+    if not result.per_user or result.user_rows is None:
+        return
+    frame = pd.DataFrame({name: values for name, values in result.per_user.items()})
+    frame.insert(0, "user_row", [int(r) for r in result.user_rows])
+    for key, value in (
+        ("dataset", cell.catalogue),
+        ("family", cell.family),
+        ("reranker", cell.reranker or "none"),
+        ("repeat", cell.repeat),
+    ):
+        frame[key] = value
+    _append(path, frame.to_dict("records"))
 
 
 def _append(path: Path, rows: dict[str, Any] | list[dict[str, Any]]) -> None:
