@@ -1,0 +1,27 @@
+# Pinned loosely: this is a research checkout, and the floor is what the code actually
+# needs rather than what happened to be installed.
+numpy>=1.24
+scipy>=1.10
+pandas>=2.0
+pyyaml>=6.0
+matplotlib>=3.7
+
+# Used for the preflight checks (power source, machine load, stale-lock detection) and
+# for peak-memory readings. The harness degrades to fewer checks without it rather than
+# failing, but every real run should have it.
+psutil>=5.9
+
+# Energy backends are optional on purpose -- see green_rerank/measure/meters.py for the
+# measured reason codecarbon is collected for comparison rather than believed. CI runs
+# without it, which is what keeps the no-backend path honest.
+# codecarbon>=2.3
+
+# Required for the rerank stage. Not optional despite only the QUBO rerankers using
+# the solvers directly: the companion project's solvers package imports neal at
+# package-import time, so even greedy MMR pulls it in. Discovered by a test, not assumed.
+dimod>=0.12
+dwave-neal>=0.6
+dwave-samplers>=1.3
+
+pytest>=7.4
+ruff>=0.6

@@ -1,0 +1,11 @@
+# Smallest run that exercises every path: both classical cost profiles, with and
+# without a reranker, on the smallest real catalogue. Two minutes, and it fails on the
+# same things the full sweep would fail on.
+name: smoke
+catalogues: [gift_cards]
+families: [popularity, itemknn, als]
+rerankers: [null, quota_mmr]
+n_users: 50
+n_candidates: 50
+k: 10
+repeats: 2

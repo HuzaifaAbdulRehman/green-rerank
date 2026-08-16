@@ -1,0 +1,260 @@
+"""Invariants for the experiment drivers.
+
+The drivers are not analysis code, but every number in the report passes through them,
+and their failure modes are the quiet kind: a sweep that silently ran once instead of
+five times, a resume that re-ran everything, an analysis that averaged a contaminated
+run in with clean ones. None of those raise, and all of them change the result.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from experiments import manifest
+from experiments.analyse import breakeven_table, cost_table, label_of, load_runs, rerank_share
+from experiments.sweep import DEFAULTS, Cell, cells, load_config, viability
+from green_rerank.data import synthetic
+
+# --------------------------------------------------------------------------- config
+
+
+class TestConfig:
+    def test_defaults_are_filled_in(self, tmp_path: Path):
+        path = tmp_path / "c.yaml"
+        path.write_text("name: x\ncatalogues: [ml100k]\n", encoding="utf-8")
+        config = load_config(path)
+        assert config["name"] == "x"
+        assert config["repeats"] == DEFAULTS["repeats"]
+
+    def test_an_unknown_key_is_an_error_not_a_warning(self, tmp_path: Path):
+        """``repeat: 5`` instead of ``repeats: 5`` is the motivating typo.
+
+        Ignored, it runs the whole sweep once and every cost is reported with no
+        uncertainty at all -- which the analysis would then present as a crossover with
+        a zero-width interval.
+        """
+        path = tmp_path / "c.yaml"
+        path.write_text("name: x\nrepeat: 5\n", encoding="utf-8")
+        with pytest.raises(SystemExit, match="unknown config keys"):
+            load_config(path)
+
+    def test_an_empty_config_is_all_defaults(self, tmp_path: Path):
+        path = tmp_path / "c.yaml"
+        path.write_text("", encoding="utf-8")
+        assert load_config(path) == DEFAULTS
+
+
+# ---------------------------------------------------------------------------- grid
+
+
+class TestGrid:
+    def test_repeat_is_the_outermost_loop(self):
+        """So that an interrupted sweep is still a comparison.
+
+        With repeat innermost, stopping halfway leaves five observations of the first
+        family and none of the last -- not a weak result, but no result. Outermost, it
+        leaves one clean observation of everything.
+        """
+        config = {**DEFAULTS, "catalogues": ["a", "b"], "families": ["f"], "repeats": 3}
+        grid = cells(config)
+        assert [c.repeat for c in grid] == [0, 0, 1, 1, 2, 2]
+
+    def test_every_combination_appears_exactly_once(self):
+        config = {
+            **DEFAULTS,
+            "catalogues": ["a", "b"],
+            "families": ["f", "g"],
+            "rerankers": [None, "mmr"],
+            "repeats": 2,
+        }
+        grid = cells(config)
+        assert len(grid) == 2 * 2 * 2 * 2
+        assert len({c.key for c in grid}) == len(grid)
+
+    def test_cell_key_normalises_the_absent_reranker(self):
+        # `None` in the config and `"none"` in the CSV must resolve to one identity, or
+        # resume would re-run every no-reranker cell forever.
+        assert Cell("a", "f", None, 0).key == ("a", "f", "none", 0)
+
+
+# ---------------------------------------------------------------------- viability
+
+
+class TestViability:
+    def test_a_usable_dataset_passes(self):
+        assert viability(synthetic(n_users=60, n_items=40), 50, 30) is None
+
+    def test_a_collapsed_catalogue_is_refused_with_a_reason(self):
+        """Amazon ``Appliances`` reduces to 13 users and 4 items under 5-core.
+
+        That is a property of the ratings-only export, not a loading bug. Running on it
+        would produce a complete row of metrics computed over four items -- numbers that
+        are not measurements, sitting in a table beside ones that are.
+        """
+        tiny = synthetic(n_users=13, n_items=4, blocks=2, per_user=2)
+        reason = viability(tiny, 50, 50)
+        assert reason is not None and "13 users" in reason
+
+    def test_too_few_items_is_reported_separately_from_too_few_users(self):
+        reason = viability(synthetic(n_users=60, n_items=40), 50, 100)
+        assert reason is not None and "items" in reason
+
+
+# ------------------------------------------------------------------------ manifest
+
+
+class TestManifest:
+    def test_records_both_repositories(self):
+        """Half-provenance is the failure worth guarding.
+
+        Every accuracy metric this project reports is computed by companion code, so a
+        manifest naming only this repository cannot identify what produced the numbers.
+        """
+        book = manifest.build({"name": "t"})
+        assert "green_rerank" in book and "companion" in book
+        assert set(book["green_rerank"]) >= {"revision", "branch", "dirty"}
+
+    def test_is_json_safe_with_a_dataclass_inside(self):
+        import json
+
+        from green_rerank.measure.guards import Preflight
+
+        book = manifest.build({"n": 1}, preflight=Preflight(power_source="ac"))
+        json.dumps(book)  # must not raise
+        assert book["preflight"]["power_source"] == "ac"
+
+    def test_a_dirty_tree_is_visible_in_the_summary(self):
+        book = {
+            "green_rerank": {"revision": "a" * 40, "dirty": True},
+            "companion": {"revision": "b" * 40, "dirty": False},
+        }
+        text = manifest.summary(book)
+        assert "aaaaaaa-dirty" in text and "bbbbbbb" in text and "bbbbbbb-dirty" not in text
+
+    def test_an_uncommitted_checkout_is_not_reported_as_clean(self):
+        assert "uncommitted" in manifest.summary({"green_rerank": {}, "companion": {}})
+
+
+# ------------------------------------------------------------------------ analysis
+
+
+def _runs(tmp_path: Path, trustworthy: bool = True, repeats: int = 4) -> Path:
+    """A minimal results file with two families of opposite cost shape."""
+    rng = np.random.default_rng(0)
+    served = 200
+    rows = []
+    for repeat in range(repeats):
+        for family, once, per_request, ndcg in (
+            ("itemknn", 0.4, 5.0e-4, 0.14),
+            ("als", 0.7, 1.0e-4, 0.09),
+        ):
+            for reranker in ("none", "quota_mmr"):
+                extra = 1.0e-3 if reranker != "none" else 0.0
+                rows.append(
+                    {
+                        "dataset": "d",
+                        "family": family,
+                        "reranker": reranker,
+                        "repeat": repeat,
+                        "status": "ok",
+                        "trustworthy": trustworthy,
+                        "n_items": 1349,
+                        "ndcg": ndcg,
+                        "recall": ndcg,
+                        "exposure_parity": 0.3,
+                        # Per-request stage columns hold the cost of serving *all*
+                        # the users in the window, exactly as the runner writes them;
+                        # only `cpu_per_request` is divided. A fixture that stored them
+                        # already divided would let a missing division pass unnoticed.
+                        "n_users": served,
+                        "cpu_once": once * (1 + 0.05 * rng.standard_normal()),
+                        "cpu_per_request": (per_request + extra),
+                        "cpu_train": once,
+                        "cpu_rerank_setup": 0.001 if reranker != "none" else 0.0,
+                        "cpu_retrieve_score": per_request * 0.6 * served,
+                        "cpu_retrieve_select": per_request * 0.4 * served,
+                        "cpu_rerank": extra * served,
+                    }
+                )
+    path = tmp_path / "runs.csv"
+    pd.DataFrame(rows).to_csv(path, index=False)
+    return tmp_path
+
+
+class TestAnalysis:
+    def test_untrustworthy_results_stop_the_analysis(self, tmp_path: Path):
+        # A cost measured while another process held the CPU is not a worse measurement,
+        # it is a measurement of something else, and it looks entirely normal in a table.
+        directory = _runs(tmp_path, trustworthy=False)
+        with pytest.raises(SystemExit, match="untrustworthy"):
+            load_runs(directory)
+        assert len(load_runs(directory, allow_untrustworthy=True)) > 0
+
+    def test_failed_runs_are_dropped_but_the_rest_survive(self, tmp_path: Path):
+        directory = _runs(tmp_path)
+        frame = pd.read_csv(directory / "runs.csv")
+        frame.loc[0, "status"] = "failed"
+        frame.to_csv(directory / "runs.csv", index=False)
+        assert len(load_runs(directory)) == len(frame) - 1
+
+    def test_repeats_are_gathered_not_averaged_away(self, tmp_path: Path):
+        table = cost_table(load_runs(_runs(tmp_path, repeats=4)))
+        assert set(table["repeats"]) == {4}
+        # The spread column is what makes a difference between families readable.
+        assert (table["spread_once"] > 0).all()
+
+    def test_the_breakeven_table_covers_every_pair_once(self, tmp_path: Path):
+        table = breakeven_table(load_runs(_runs(tmp_path)))
+        # Four configurations -> six unordered pairs.
+        assert len(table) == 6
+        assert len({frozenset((r.a, r.b)) for r in table.itertuples()}) == 6
+
+    def test_the_expected_crossover_is_found_and_marked_stable(self, tmp_path: Path):
+        table = breakeven_table(load_runs(_runs(tmp_path, repeats=6)))
+        row = table[(table.a == "itemknn") & (table.b == "als")].iloc[0]
+        # (0.7-0.4)/(5e-4 - 1e-4) = 750 requests.
+        assert row["stable"]
+        assert 400 < row["n_requests"] < 1400
+        assert row["cheaper_below"] == "itemknn"
+        assert row["cheaper_above"] == "als"
+
+    def test_rerank_share_covers_only_reranked_rows(self, tmp_path: Path):
+        table = rerank_share(load_runs(_runs(tmp_path)))
+        assert set(table["reranker"]) == {"quota_mmr"}
+        assert (table["rerank_share_of_serving"] > 0.5).all()
+        # Serving cost more than doubled, which is the deployer-facing framing.
+        assert (table["serving_multiplier"] > 2).all()
+
+    def test_labels_distinguish_a_reranked_family_from_a_plain_one(self):
+        assert label_of("als", "none") == "als"
+        assert label_of("als", "quota_mmr") == "als+quota_mmr"
+
+
+class TestFigures:
+    """Smoke tests only.
+
+    A figure's *content* is not worth asserting -- pixel comparisons break on every
+    matplotlib release and tell you nothing about whether the plot is right. What is
+    worth asserting is that the code path runs on real result shapes, because these
+    functions index columns by name and a renamed column would break them silently at
+    report time, which is the worst moment to discover it.
+    """
+
+    def test_every_figure_is_produced(self, tmp_path: Path):
+        from experiments.figures import all_figures
+
+        made = all_figures(_runs(tmp_path, repeats=4))
+        assert len(made) >= 3
+        assert all(p.exists() and p.stat().st_size > 0 for p in made)
+
+    def test_figures_also_refuse_untrustworthy_rows(self, tmp_path: Path):
+        # The refusal lives in load_runs, and this asserts the figure path goes through
+        # it rather than reading the CSV itself.
+        from experiments.figures import all_figures
+
+        with pytest.raises(SystemExit, match="untrustworthy"):
+            all_figures(_runs(tmp_path, trustworthy=False))

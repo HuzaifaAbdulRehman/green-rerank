@@ -1,0 +1,101 @@
+# Packaging mirrors the companion project (feasible-rerank): metadata plus an editable
+# install, and nothing more. This is a research codebase run from a checkout.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "green-rerank"
+version = "0.1.0"
+description = "Stage-resolved energy accounting for recommender pipelines"
+readme = "README.md"
+license = { file = "LICENSE" }
+# 3.10 is the floor the companion project targets and what this is developed against.
+requires-python = ">=3.10"
+authors = [{ name = "Huzaifa Abdul Rehman" }]
+keywords = [
+    "recommender-systems",
+    "green-computing",
+    "energy-measurement",
+    "sustainability",
+]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+    "pyyaml>=6.0",
+    "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+# codecarbon is optional on purpose. The harness must stay importable -- and its tests
+# must stay runnable in CI -- on a machine with no energy backend at all, otherwise the
+# only environment the measurement code is exercised in is the one machine it was
+# written on.
+energy = ["codecarbon>=2.3"]
+# torch is large and needed only for the neural families. Keeping it out of the default
+# install means the classical families stay installable in seconds. On a machine without
+# CUDA -- which includes the one this was developed on -- install the CPU build:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+neural = ["torch>=2.0"]
+
+# Needed by the rerank stage. Every reranker needs it, including the pure-numpy ones:
+# the companion project's solvers package imports neal when the package is imported, so
+# there is no way to reach greedy MMR without it. An earlier version of this file
+# claimed otherwise and the test suite disproved it.
+rerank = ["dimod>=0.12", "dwave-neal>=0.6", "dwave-samplers>=1.3"]
+dev = ["pytest>=7.4", "coverage>=7.0", "ruff>=0.6"]
+
+[tool.setuptools]
+packages = [
+    "green_rerank",
+    "green_rerank.measure",
+    "green_rerank.families",
+    "green_rerank.pipeline",
+    "green_rerank.analysis",
+]
+
+# `pythonpath = ["."]` is load-bearing: without it a bare `pytest tests/` fails at import
+# while `python -m pytest` succeeds, so the suite would pass locally and break in CI.
+[tool.pytest.ini_options]
+minversion = "7.0"
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    # Timing-sensitive tests are unreliable on shared CI runners, where a noisy
+    # neighbour can stall the process mid-window. They must still run locally, since
+    # they are the ones guarding the measurement claims.
+    "timing: assertions about wall-clock or energy that need a quiet machine",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "RUF"]
+ignore = [
+    # Experiment drivers insert the repo root on sys.path before importing from it,
+    # because they run as scripts rather than as an installed package.
+    "E402",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
+
+[tool.coverage.run]
+source = ["green_rerank", "experiments"]
+
+[tool.coverage.report]
+skip_empty = true
+exclude_lines = ["pragma: no cover", "if __name__ == .__main__.:"]

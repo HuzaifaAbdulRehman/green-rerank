@@ -1,0 +1,40 @@
+# The study's primary sweep.
+#
+# Five catalogues spanning 147 to 11,268 items. That range is the point: the break-even
+# claim is a statement about how serving cost scales with catalogue size, and it cannot
+# be demonstrated on one catalogue. Amazon `appliances` is registered but omitted -- it
+# collapses to 13 users and 4 items under 5-core filtering, which the driver refuses.
+#
+# The neural families are restricted to MovieLens 100K. GRU4Rec costs ~135 CPU-seconds
+# per epoch there, and `digital_music` has 17x the users; the restriction is a scope
+# decision, and it is recorded here rather than left implicit in what happened to be run.
+name: main
+catalogues: [gift_cards, software, ml100k, luxury_beauty, digital_music]
+families: [popularity, itemknn, als, multvae, gru4rec]
+only_on:
+  multvae: [ml100k]
+  gru4rec: [ml100k]
+
+# Both conditions, because the rerank stage's cost is only interpretable against the
+# same pipeline without it.
+rerankers: [null, quota_mmr]
+
+n_users: 200
+n_candidates: 200
+k: 10
+
+# Five, because the crossover is a ratio of differences and needs an interval. Below
+# three the bootstrap cannot produce a spread at all.
+repeats: 5
+seed: 0
+
+lam: 0.3
+mu: 1.0
+
+family_kwargs:
+  als:
+    epochs: 15
+  multvae:
+    epochs: 10
+  gru4rec:
+    epochs: 5

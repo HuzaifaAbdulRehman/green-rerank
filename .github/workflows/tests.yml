@@ -1,0 +1,49 @@
+name: tests
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check .
+
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - run: pip install -r requirements.txt coverage
+
+      # `-m "not timing"`: the timing assertions guard the measurement claims, but a
+      # shared CI runner can stall a process mid-window and fail them for reasons that
+      # have nothing to do with the code. They run locally, on the quiet machine that
+      # produces the results. Deselecting them here is a statement about the runner,
+      # not a licence to let them rot -- `make check` runs the full suite.
+      - run: coverage run -m pytest tests/ -m "not timing"
+      - run: coverage report
+
+      # The harness must import and measure (in wall-clock-only mode) with no energy
+      # backend installed. CI has none, so the run above already proves it; this asserts
+      # it deliberately rather than by accident.
+      - run: python -c "from green_rerank.measure import default_meter; print(default_meter())"

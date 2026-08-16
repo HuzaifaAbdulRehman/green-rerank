@@ -1,0 +1,20 @@
+# Not a measurement. This config exists to prove the driver runs end to end -- every
+# family, both reranker conditions, resume, failure capture, both output files -- in
+# seconds, on a machine that may be doing anything at all.
+#
+# `max_busy_pct: null` disables the abort, so the costs it produces are meaningless by
+# construction. That is why `trust_busy_pct: 0` is set too: every row it writes is
+# stamped `trustworthy=False`, and no analysis will read it as a result.
+name: plumbing
+catalogues: [gift_cards]
+families: [popularity, itemknn, als]
+rerankers: [null, quota_mmr]
+n_users: 30
+n_candidates: 40
+k: 10
+repeats: 1
+max_busy_pct: null
+trust_busy_pct: 0
+family_kwargs:
+  als:
+    epochs: 3
