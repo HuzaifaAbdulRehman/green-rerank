@@ -238,13 +238,28 @@ version anyone can return to and it should not look like one.
 ## Testing
 
 ```bash
-pytest tests/ -m "not timing"
+pytest tests/ -m "not timing"     # ~250 tests, 88 % coverage
 ruff check .
+python tests/mutations.py         # 29 deliberate bugs; all must be caught
 ```
 
 Tests assert invariants rather than chase coverage — the target is anything that could
-fail *silently*. The ones that have already earned their place:
+fail *silently*.
 
+`tests/mutations.py` is the check on the checks. Coverage says a line ran; it does not
+say that breaking that line would fail anything, and in a project about defects that
+leave output looking normal, that is the distinction that matters. Each entry introduces
+a mistake someone could really make — a forgotten division, an inverted comparison, a
+guard removed because it looked redundant — runs the tests that ought to object, and
+reports whether they did. **Four survived the first run**, and each was this project's
+characteristic failure. All 29 are caught now.
+
+The tests that have already earned their place:
+
+- fairness groups are positionally aligned with the matrix columns (mutation testing
+  found that reversing them left the whole suite green — every exposure-parity number
+  would have measured a permutation of the truth while staying in range and still
+  responding to reranking)
 - top-k selection matches a reference lexsort element-for-element, including on
   tie-saturated and `-inf`-containing inputs
 - a shared measurement session does not leak readings between runs (this one caught a
