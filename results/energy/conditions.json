@@ -1,0 +1,13 @@
+{
+  "power_sources_seen": [
+    "ac"
+  ],
+  "power_source_changed": false,
+  "samples": 239,
+  "cpu_mhz_max": 1696.0,
+  "cpu_mhz_min": 1696.0,
+  "cpu_mhz_mean": 1696.0,
+  "frequency_drop": 0.0,
+  "throttled": false,
+  "conditions_changed": false
+}

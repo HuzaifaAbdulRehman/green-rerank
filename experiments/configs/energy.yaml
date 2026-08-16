@@ -1,0 +1,21 @@
+# The energy-enabled companion to the main sweep, for section 5's agreement test.
+#
+# The main sweep runs without a meter, deliberately: codecarbon's tracker costs seconds
+# per window to start, and the study's cost unit does not need it. But the claim that
+# its energy column carries no information beyond the clock has to be tested on *real
+# workloads*, not only on the synthetic graded load -- so this runs the same pipeline
+# with the meter attached and regresses reported energy on measured time.
+#
+# Deliberately small. The question is whether the energy column tracks the timing column
+# across workloads spanning several orders of magnitude in cost, and three families on
+# two catalogues already spans four. More runs would buy precision on a correlation that
+# is either ~1.0 or is not.
+name: energy
+catalogues: [gift_cards, ml100k]
+families: [popularity, itemknn, als]
+rerankers: [null, quota_mmr]
+n_users: 200
+n_candidates: 200
+k: 10
+repeats: 3
+energy: true

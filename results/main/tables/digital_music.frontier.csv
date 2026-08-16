@@ -1,0 +1,8 @@
+n_requests,frontier,dominated,cheapest,most_accurate
+1,"popularity, popularity+quota_mmr, itemknn, itemknn+quota_mmr","als, als+quota_mmr",popularity,itemknn+quota_mmr
+10,"popularity, popularity+quota_mmr, itemknn, itemknn+quota_mmr","als, als+quota_mmr",popularity,itemknn+quota_mmr
+100,"popularity, itemknn, itemknn+quota_mmr","als, als+quota_mmr, popularity+quota_mmr",popularity,itemknn+quota_mmr
+1000,"popularity, itemknn, itemknn+quota_mmr","als, als+quota_mmr, popularity+quota_mmr",popularity,itemknn+quota_mmr
+10000,"popularity, itemknn, itemknn+quota_mmr","popularity+quota_mmr, als+quota_mmr, als",popularity,itemknn+quota_mmr
+100000,"popularity, itemknn, itemknn+quota_mmr","popularity+quota_mmr, als+quota_mmr, als",popularity,itemknn+quota_mmr
+1000000,"popularity, itemknn, itemknn+quota_mmr","popularity+quota_mmr, als+quota_mmr, als",popularity,itemknn+quota_mmr

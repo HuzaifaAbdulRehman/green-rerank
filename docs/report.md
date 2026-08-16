@@ -1,9 +1,9 @@
 # The cost of a recommendation, by stage
 
-**Status:** methodology and the energy-validity result are complete. The cross-catalogue
-sweep has not yet been run on a quiet machine, so the break-even and frontier sections
-are marked as pending rather than filled with numbers taken under contention. Every
-section below that states a figure states where it came from.
+**Status:** complete. The cross-catalogue sweep ran to completion on an idle machine —
+170 runs, zero failures, every row passing the trust check — and §7 reports it. Figures
+are in `results/main/figures/`, tables in `results/main/tables/`, and the raw per-stage
+readings in `results/main/readings.csv`.
 
 ---
 
@@ -140,7 +140,34 @@ development the machine was frequently occupied by the companion project's own
 experiments, and the guard is what kept those hours from producing a plausible-looking
 results table.
 
-### 4.4 Uncertainty on the break-even
+### 4.4 A leakage trap, found by running the sweep
+
+The first attempt at the full sweep failed on its second cell, and the cause was not a
+cost bug.
+
+Seen items are excluded from recommendation by scoring them `-inf`. Retrieval then asks
+for the top *n* candidates. On a small catalogue those two facts collide: `gift_cards`
+has 147 items, retrieval depth was set to 200, and a user with twelve interactions has
+only 135 candidates that mean anything. The remaining slots were filled with `-inf`
+entries — which are, precisely, that user's own history.
+
+Downstream, normalising the candidate scores computed `-inf − -inf = NaN`, so the
+reranker received a relevance vector of NaNs, ranked on them, and could place an
+already-seen item into the final list. Every metric would still have been computed, and
+nothing in the output would have looked wrong.
+
+The fix caps retrieval depth at `n_items − (busiest served user's history)`, records both
+the requested and the actual depth on every row — a reranker's cost scales with its
+problem size, so a run that quietly retrieved 135 instead of 200 is not comparable to one
+that got 200 — and makes the normalisation *raise* on non-finite input rather than
+propagate NaN, as an assertion that the cap holds rather than a patch over its absence.
+
+Worth stating plainly because it is the project's own thesis turned on itself: the bug
+was found by running the experiment, not by reading the code, and it belongs to the same
+family as everything in §4.3 — a defect that changes the results and leaves the output
+looking entirely normal.
+
+### 4.5 Uncertainty on the break-even
 
 A crossover is a ratio of two differences:
 
@@ -181,24 +208,68 @@ Tested directly with a graded load — 0, 1, 2, 4 and 8 busy **processes** (proc
 threads: the GIL would let a thread-based load saturate one core while the rest idled,
 handing the backend an easier test than it needs to pass).
 
-Findings, on the original observation (codecarbon 2.x):
+Measured on **codecarbon 3.3.0**, five conditions of 20 seconds each, on an idle machine:
 
-| load | reported CPU power | reported utilisation |
-|------|--------------------|----------------------|
-| idle | 1.501 W | 0.0 % |
-| 8 threads saturated | 1.815 W | 0.0 % |
+| busy workers | reported CPU power | reported utilisation | reported RAM power | total energy |
+|--------------|--------------------|----------------------|--------------------|--------------|
+| 0 | 1.500 W | 0.0 % | 10.000 W | 7.459e-05 kWh |
+| 1 | 1.501 W | 0.0 % | 10.000 W | 6.611e-05 kWh |
+| 2 | 1.504 W | 0.0 % | 10.000 W | 6.613e-05 kWh |
+| 4 | 1.523 W | 0.0 % | 10.000 W | 6.722e-05 kWh |
+| 8 | 1.687 W | 0.0 % | 10.000 W | 7.418e-05 kWh |
 
-A 1.21× swing against a true dynamic range of roughly 10× for this part; utilisation
-pinned at zero throughout; the fully loaded window reporting **less** total energy than
-idle (7.290e-05 vs 7.371e-05 kWh); and RAM billed at a hardcoded constant 10.000 W that
-dominates the total.
+Four things, none of which is a matter of precision:
 
-Re-run on **codecarbon 3.3.0** during this work, one of those findings has changed and is
-reported as measured rather than restated: `cpu_util_pct` is no longer always zero — it
-reported 16.7 % under a 4-worker load in one window. `ram_watts` remains **exactly**
-10.000 W across the entire span from idle to saturation. A channel that is bit-for-bit
-identical from idle to full saturation is not a noisy measurement of the load; it is not
-a measurement of the load, and it needs no threshold to interpret.
+1. **Utilisation reads exactly 0.0 % at every level**, including eight saturated cores.
+2. **CPU power moves 1.12×** across the full span from idle to saturation, against a true
+   dynamic range of roughly 10× for a 15 W part.
+3. **RAM power is exactly 10.000 W at every level** — a hardcoded constant, and it
+   dominates the total. A channel that is bit-for-bit identical from idle to full
+   saturation is not a noisy measurement of the load; it is not a measurement of the
+   load, and it needs no threshold to interpret.
+4. **The fully loaded run reports less total energy than the idle one** (7.418e-05
+   against 7.459e-05 kWh), despite running 1.3 seconds longer. Per second the inversion
+   is larger still: 3.47e-06 loaded against 3.73e-06 idle.
+
+An earlier draft of this section recorded that 3.3.0 had partly fixed the utilisation
+probe, having seen it report 16.7 % once. That observation was taken while another
+process was occupying the machine, so what it measured was the *other* process. On an
+idle machine the probe reads zero at every load, exactly as the 2.x observation did. The
+correction is noted rather than quietly removed, because it is the same error this
+project is about — a plausible number, produced under conditions that were not checked.
+
+### 5.1 The second test refuted the hypothesis, and the answer is worse
+
+The graded load asks whether the backend can see a *known* load. A second test asks a
+weaker and more directly relevant question: on the actual workloads this study measures,
+does the energy column say anything the clock does not?
+
+The stated hypothesis (§4.1, and `analysis/validity.py`) was that reported energy would
+degenerate to `kWh ≈ constant × seconds` — that it would be a rescaled clock, giving an
+R² near 1.0 against elapsed time. That is a specific, falsifiable prediction and it is
+**wrong**.
+
+Regressed over 144 readings from a meter-enabled sweep spanning four orders of magnitude
+of workload cost:
+
+| reference | R² | Spearman | spread of the conversion ratio |
+|-----------|-----|----------|-------------------------------|
+| CPU-seconds | 0.551 | 0.610 | **13.7×** |
+| wall-clock | 0.555 | 0.709 | 13.1× |
+
+The energy column is not a rescaled clock. It is worse: it does not track time reliably
+either. Barely half the variance is explained by a straight line, and the implied
+kWh-per-CPU-second conversion varies by a factor of **13.7** across runs — so it is not a
+constant misestimate that could be calibrated away, which a rescaled clock would at least
+have been.
+
+Reported as a refuted prediction rather than folded into the narrative, because the
+project's own machinery classified it as "carries some information beyond the reference"
+and that phrasing is too generous. The information it carries is not information about
+energy; a column whose conversion factor moves by 13.7× while measuring the same machine
+is measuring its own sampling cadence.
+
+### 5.2 Why no other route was available
 
 The machine exposes no RAPL. WSL2 does not help — verified rather than assumed:
 `/sys/class/powercap` exists but is empty and `/dev/cpu/0/msr` is absent, because the
@@ -240,38 +311,144 @@ of the data.
 
 ## 7. Results
 
-### 7.1 Break-even between families — *pending*
+**Provenance.** 170 runs — 5 catalogues × up to 5 families × {no reranker, `quota_mmr`}
+× 5 repeats — serving 200 users each at retrieval depth 200 and k = 10. Zero failures.
+All 170 rows passed the trust check (machine 13.3 % busy at start, below the 15 %
+threshold), the conditions monitor recorded mains power throughout with no frequency
+change across 1,981 samples, and **no stage fell below the clock quantum** — every
+reading was grown above the scheduler tick rather than reported as one.
 
-Requires the cross-catalogue sweep on an unloaded machine.
+Run-to-run spread on identical work ranged from 12 % to 61 % of the median. That is the
+noise floor every difference below has to clear, and it is why the break-even is reported
+as an interval.
 
-### 7.2 The cost of fairness reranking — *preliminary*
+### 7.1 Break-even between families
 
-From a driver-validation run on `gift_cards` (marked untrustworthy — the machine was
-occupied — and reported here only as an order of magnitude):
+**MovieLens 100K, ItemKNN against ALS: N = 112,730 requests, 95 % CI [51,128 – 180,720],
+95 % of bootstrap replicates crossing.**
 
-| family | rerank share of serving cost | serving-cost multiplier |
-|--------|------------------------------|-------------------------|
-| `popularity` | 92.8 % | 13.9× |
-| `itemknn` | 90.9 % | 10.9× |
-| `als` | 92.0 % | 12.5× |
+Below roughly 110,000 requests the neighbourhood model is the cheaper deployment; above
+it, the factor model. ItemKNN trains in 0.195 CPU-seconds and serves at 1.86e-4 per
+request; ALS trains in 5.78 and serves at 1.36e-4. Neither figure alone answers "which
+should I deploy" — their crossing point does, and it is the kind of number no per-run
+energy table can produce.
 
-The shape is consistent across families: the fairness reranker is roughly an order of
-magnitude more expensive than the entire retrieval it sits on top of, and it dominates
-per-request cost. If this survives measurement on a quiet machine it is the project's
-most directly actionable number, because it is a cost nobody currently reports at all.
+A second stable crossing on the same catalogue: ALS against MultVAE at N = 2,639
+[361 – 5,248], all replicates crossing.
 
-Accuracy moved in **both** directions across catalogues in preliminary runs — reranking
-lowered NDCG on `gift_cards` (0.227 → 0.159) and raised it on `digital_music`
-(0.048 → 0.062). Both directions will be reported.
+**The more important result is how few pairs cross at all.** Of 45 configuration pairs on
+MovieLens 100K, only 13 produce a crossover this analysis is willing to report. The rest
+are either outright domination — one family cheaper at every volume, which is a finding,
+not a missing number — or crossings too unstable under resampling to state. Reporting
+only the 13 and omitting that denominator would misrepresent how often the amortisation
+question even has an answer.
 
-### 7.3 Efficiency frontier — *pending*
+### 7.2 The cost of fairness reranking
 
-### 7.4 Retraining cadence — *pending*
+**The reranker accounts for 80 – 98 % of per-request cost, multiplying serving cost by
+4.9× to 43.8×.** Measured across all five catalogues and every family, 17 configurations
+in total.
 
-The plain line assumes a model is trained once and serves forever, which no deployment
-does. Under periodic retraining the once-cost recurs and a family with expensive training
-loses its amortisation advantage in proportion to how often it is retrained — enough to
-reverse the verdict.
+| catalogue | family | rerank share | serving multiplier |
+|-----------|--------|--------------|--------------------|
+| `luxury_beauty` | `popularity` | 97.7 % | 43.8× |
+| `software` | `itemknn` | 97.1 % | 34.2× |
+| `gift_cards` | `als` | 96.8 % | 30.9× |
+| `ml100k` | `popularity` | 95.8 % | 24.0× |
+| `ml100k` | `itemknn` | 93.7 % | 15.8× |
+| `digital_music` | `itemknn` | 88.5 % | 8.7× |
+| `ml100k` | `multvae` | 86.1 % | 7.2× |
+| `digital_music` | `als` | 80.6 % | 5.2× |
+| `ml100k` | `gru4rec` | 79.8 % | 4.9× |
+
+The share has structure rather than being a constant: it falls as retrieval itself gets
+more expensive. The reranker's cost is set by its problem size — 200 candidates, k = 10 —
+not by the model beneath it, so it dominates a cheap popularity lookup almost entirely
+and merely doubles-and-a-bit the cost of serving a GRU4Rec.
+
+This is, as far as the literature search found, the first published figure for what a
+fairness reranker costs as a share of a recommender pipeline. It is also the project's
+most directly actionable number: a deployer adding exposure fairness to a popularity
+baseline is not paying a margin, they are paying **24 times** their serving cost.
+
+What that buys is large and unambiguous. On MovieLens 100K exposure parity improves from
+1.186 to 0.257 (lower is better) — and on `software` the paired test finds it better on
+**200 of 200 users**, p < 0.0001.
+
+### 7.3 Efficiency frontier
+
+Non-dominated configurations at N = 100,000 requests:
+
+| catalogue | frontier |
+|-----------|----------|
+| `ml100k` | `popularity`, `als`, `gru4rec` |
+| `software` | `popularity`, `itemknn`, `als` |
+| `digital_music` | `popularity`, `itemknn`, `itemknn+quota_mmr` |
+| `luxury_beauty` | `popularity`, `itemknn` |
+| `gift_cards` | `itemknn` |
+
+**ItemKNN and MultVAE are dominated on MovieLens 100K** — they cost more than
+recommending the most popular items to everyone and score lower. On that catalogue they
+should not be deployed at all, at any traffic level. That is a stronger statement than
+"they scored slightly worse", and it is invisible in a table that reports accuracy and
+energy in separate columns.
+
+`popularity` appears on four of five frontiers, always as the cheap endpoint.
+
+The frontier's axes are accuracy and cost only, so every reranked configuration except
+one falls behind it — reranking buys exposure parity, which is not an axis here. The
+`digital_music` row is the exception worth noting: there `itemknn+quota_mmr` is
+non-dominated on accuracy and cost alone, meaning reranking *improved* NDCG on that
+catalogue rather than trading it away.
+
+### 7.4 Retraining cadence
+
+Holding traffic fixed at 100,000 requests on MovieLens 100K and varying only how often
+the model is retrained:
+
+| retrain every | `popularity` | `itemknn` | `als` | `multvae` | `gru4rec` |
+|---------------|--------------|-----------|-------|-----------|-----------|
+| never | 11.4 | 18.8 | 19.4 | 69.5 | 571 |
+| 100,000 | 11.4 | 18.9 | 25.2 | 73.9 | 1,023 |
+| 10,000 | 11.4 | 20.7 | 77.2 | 113 | 5,086 |
+| 1,000 | 11.4 | 38.3 | 598 | 507 | 45,720 |
+| 100 | 11.6 | 214 | 5,801 | 4,444 | 452,056 |
+
+All figures CPU-seconds.
+
+**Cadence moves total cost by 791× for the neural family while changing its accuracy not
+at all.** That is a far larger lever than the choice of model, and it is absent from every
+energy figure that reports a single run.
+
+The ordering also reverses: **ALS and MultVAE swap** below a 1,000-request cadence. ALS
+serves nearly five times cheaper (1.36e-4 against 6.51e-4) but trains a third dearer, so
+which is preferable depends entirely on how fast the catalogue goes stale — a question
+the model comparison itself cannot answer.
+
+`popularity` is cheapest at every cadence here, which is a degenerate but honest outcome:
+its training is effectively free, so retraining costs it nothing. The cadence axis only
+discriminates between models that actually train.
+
+### 7.5 Accuracy, tested rather than averaged
+
+**On MovieLens 100K, only GRU4Rec beats the popularity baseline — and only on recall**
+(37 wins, 11 losses, 152 ties; p = 0.0073 after Holm correction). ItemKNN, ALS and
+MultVAE show **no detectable difference** from recommending the globally most popular
+items to every user.
+
+Set against §7.4: GRU4Rec costs 451 CPU-seconds to train against popularity's 0.000167 —
+a factor of 2.7 million — for the only accuracy gain on the catalogue that survives a
+paired test, on one metric.
+
+The result is catalogue-dependent, and that dependence is itself the finding. On
+`software` both ItemKNN and ALS beat popularity clearly (28 wins against 1 loss,
+p = 0.0002). A study reporting either catalogue alone would support a confident and
+wrong generalisation.
+
+This is the Green RecSys literature's central concern, measured: models costing orders of
+magnitude more frequently deliver no accuracy that a paired test can detect. Reporting
+means alone would have hidden it — the raw NDCG figures (`als` 0.0685 against
+`popularity` 0.0527) look like a 30 % improvement.
 
 ## 8. Threats to validity
 

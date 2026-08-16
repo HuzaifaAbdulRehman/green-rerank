@@ -1,0 +1,89 @@
+{
+  "graded_load": {
+    "responded": false,
+    "channels": {
+      "codecarbon.cpu_kwh": {
+        "usable": true,
+        "cumulative": true,
+        "unit": "per second",
+        "idle": 4.805308610056767e-07,
+        "loaded": 6.54058065254226e-07,
+        "dynamic_range": 1.5678398366494908,
+        "monotone": false,
+        "inverted": false,
+        "constant": false
+      },
+      "codecarbon.ram_kwh": {
+        "usable": true,
+        "cumulative": true,
+        "unit": "per second",
+        "idle": 3.2032432209913917e-06,
+        "loaded": 2.777811714571069e-06,
+        "dynamic_range": 1.1531576446132765,
+        "monotone": false,
+        "inverted": true,
+        "constant": false
+      },
+      "codecarbon.gpu_kwh": {
+        "usable": false
+      },
+      "codecarbon.total_kwh": {
+        "usable": true,
+        "cumulative": true,
+        "unit": "per second",
+        "idle": 3.683774081997069e-06,
+        "loaded": 3.4318697798252967e-06,
+        "dynamic_range": 1.1529899435513713,
+        "monotone": false,
+        "inverted": true,
+        "constant": false
+      },
+      "codecarbon.cpu_watts": {
+        "usable": true,
+        "cumulative": false,
+        "unit": "as reported",
+        "idle": 1.5000023478260869,
+        "loaded": 1.660121072180124,
+        "dynamic_range": 1.1067456491558783,
+        "monotone": true,
+        "inverted": false,
+        "constant": false
+      },
+      "codecarbon.ram_watts": {
+        "usable": true,
+        "cumulative": false,
+        "unit": "as reported",
+        "idle": 10.0,
+        "loaded": 10.0,
+        "dynamic_range": 1.0,
+        "monotone": true,
+        "inverted": false,
+        "constant": true
+      },
+      "codecarbon.co2_kg": {
+        "usable": true,
+        "cumulative": true,
+        "unit": "per second",
+        "idle": 1.6231003307205645e-06,
+        "loaded": 1.5121092799492637e-06,
+        "dynamic_range": 1.1529899435513713,
+        "monotone": false,
+        "inverted": true,
+        "constant": false
+      },
+      "codecarbon.cpu_util_pct": {
+        "usable": false
+      }
+    },
+    "constant_channels": [
+      "codecarbon.ram_watts"
+    ],
+    "reason": "no channel changed by more than 2x between idle and full load"
+  },
+  "sweep_agreement": {
+    "available": true,
+    "n": 144,
+    "vs_cpu_seconds": "n=144  R^2=0.5506  slope=4.034e-06  spearman=0.6102  ratio spread=13.654  -> carries some information beyond the reference",
+    "vs_wall_seconds": "n=144  R^2=0.5554  slope=5.006e-06  spearman=0.7088  ratio spread=13.141  -> carries some information beyond the reference"
+  }
+}

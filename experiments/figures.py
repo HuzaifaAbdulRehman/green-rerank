@@ -310,6 +310,56 @@ def stage_breakdown(runs, catalogue: str, out: Path) -> Path:
     return path
 
 
+def retraining_curves(runs, catalogue: str, out: Path, n_requests: float = 1_000_000) -> Path:
+    """Total cost against retraining cadence, at fixed traffic.
+
+    The second axis the verdict turns on. The break-even figure varies traffic with the
+    model trained once; this varies how often it is retrained with traffic held fixed,
+    and the lines can reorder -- a family that wins by amortising an expensive training
+    run stops winning once it pays for that run repeatedly.
+
+    Traffic is fixed and stated in the title, because a cadence plot at an unstated
+    volume is uninterpretable: the whole effect is a competition between a recurring
+    once-cost and an accumulating per-request one.
+    """
+    frame = runs[runs.dataset == catalogue]
+    lines = [s.line() for s in cost_samples(frame)]
+    intervals = np.logspace(1, 6, 60)
+
+    figure, axis = plt.subplots(figsize=(8, 5.5))
+    for line in lines:
+        axis.plot(
+            intervals,
+            [line.with_retraining(every).at(n_requests) for every in intervals],
+            label=line.label,
+            color=_colour(line.label),
+            linestyle=_style(line.label),
+            linewidth=1.8,
+        )
+        # The never-retrained floor, as a reference each staircase descends to.
+        axis.axhline(line.at(n_requests), color=_colour(line.label), alpha=0.25, linewidth=0.7)
+
+    axis.set_xscale("log")
+    axis.set_yscale("log")
+    # Frequent retraining on the left, because that is the expensive end and reading
+    # left-to-right should mean "getting cheaper".
+    axis.invert_xaxis()
+    axis.set_xlabel("requests between retrains  (frequent <- -> rare)")
+    axis.set_ylabel(f"total cost of {n_requests:,.0f} requests (CPU-seconds)")
+    axis.set_title(
+        f"Cost against retraining cadence -- {catalogue}, N = {n_requests:,.0f}\n"
+        "faint horizontal lines are the never-retrained floor"
+    )
+    axis.grid(True, which="both", alpha=0.15)
+    axis.legend(fontsize=8, loc="upper right")
+
+    path = out / f"{catalogue}.retraining.png"
+    figure.tight_layout()
+    figure.savefig(path, dpi=160)
+    plt.close(figure)
+    return path
+
+
 def all_figures(directory: Path, allow_untrustworthy: bool = False) -> list[Path]:
     runs = load_runs(directory, allow_untrustworthy)
     out = directory / "figures"
@@ -320,6 +370,7 @@ def all_figures(directory: Path, allow_untrustworthy: bool = False) -> list[Path
         made.append(cost_curves(runs, catalogue, out))
         made.append(stage_breakdown(runs, catalogue, out))
         made.append(efficiency_frontier(runs, catalogue, out))
+        made.append(retraining_curves(runs, catalogue, out))
 
         # Every pair whose lines actually cross is worth its own panel; pairs where one
         # family dominates are already legible in the cost-curve figure.

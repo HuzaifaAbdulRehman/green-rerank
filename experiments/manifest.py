@@ -65,6 +65,14 @@ def _git(root: Path, *args: str) -> str | None:
     return out.stdout.strip()
 
 
+#: Paths whose modification does not make the *code* dirty. Results are the output of
+#: the run being recorded, and they are written into the working tree while it runs --
+#: so counting them would make every manifest say "dirty" and the flag would carry no
+#: information at all, least of all about the thing it is for: whether the code that
+#: produced these numbers is the code someone can check out.
+NOT_CODE = ("results", "docs")
+
+
 def git_state(root: Path) -> dict[str, Any]:
     """Revision, branch and cleanliness of a checkout.
 
@@ -74,11 +82,19 @@ def git_state(root: Path) -> dict[str, Any]:
     revision = _git(root, "rev-parse", "HEAD")
     if revision is None:
         return {"revision": None, "branch": None, "dirty": None}
+
     status = _git(root, "status", "--porcelain")
+    code_status = _git(
+        root, "status", "--porcelain", "--", ".", *(f":(exclude){p}" for p in NOT_CODE)
+    )
     return {
         "revision": revision,
         "branch": _git(root, "rev-parse", "--abbrev-ref", "HEAD"),
-        "dirty": bool(status),
+        # Dirtiness of the code specifically. A run writes its own results into the
+        # tree, so the unfiltered flag is true during every sweep by construction.
+        "dirty": bool(code_status),
+        # Kept so the distinction is visible rather than assumed away.
+        "tree_dirty": bool(status),
     }
 
 

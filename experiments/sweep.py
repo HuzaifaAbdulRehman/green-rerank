@@ -322,7 +322,12 @@ def _run_cell(
             lam=config["lam"],
             mu=config["mu"],
         )
-        row = {**base, **result.as_row(), "status": "ok", "error": ""}
+        # `base` last, so the registry's catalogue name wins over the Dataset's own
+        # `name`. They differ -- the registry key is `ml100k`, the loader calls it
+        # `movielens100k` -- and letting each file pick its own would put the same
+        # catalogue under two names in one results directory, silently breaking any
+        # join between runs.csv and per_user.csv.
+        row = {**result.as_row(), **base, "status": "ok", "error": ""}
         row["below_quantum"] = ";".join(result.below_quantum_stages())
         row["n_items"] = dataset.n_items
         row["n_train_users"] = dataset.n_users

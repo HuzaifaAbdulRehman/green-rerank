@@ -166,9 +166,17 @@ The companion checkout must be findable — `../qubo-rerank` by default, or set
 `$GREEN_RERANK_DATA`, then the companion's `data/`.
 
 ```bash
-python -m experiments.sweep   --config experiments/configs/main.yaml
-python -m experiments.analyse --results results/main
+python -m experiments.validity                                        # the energy-axis check
+python -m experiments.sweep    --config experiments/configs/main.yaml # the measurements
+python -m experiments.analyse  --results results/main                 # cost tables, break-even
+python -m experiments.compare  --results results/main                 # paired accuracy tests
+python -m experiments.figures  --results results/main                 # plots
 ```
+
+`validity` runs in about two minutes and needs no dataset: it applies a known graded
+load and reports what the energy backend says about it. On a machine with working power
+counters it should show a clear response; on the development machine it does not, which
+is §5 of the report.
 
 The sweep resumes by default: an interrupted run picks up the cells it has not done.
 Repeat is the outermost loop, so an interrupted sweep still leaves one complete
@@ -196,9 +204,17 @@ fail *silently*. The ones that have already earned their place:
 - a shared measurement session does not leak readings between runs (this one caught a
   live bug: costs would have climbed monotonically through a sweep with every individual
   row still looking plausible)
+- the candidate set never exceeds what a user can be shown (this one caught a leakage
+  bug: on a 147-item catalogue, asking for 200 candidates returned the user's own
+  history as `-inf` padding, which became NaN in the reranker's relevance vector)
 - a bootstrap over one repeat is refused rather than reported as a zero-width interval
+- results written into the working tree do not count as dirty *code* in the manifest,
+  or the provenance flag would be true in every run and mean nothing
 - GRU4Rec's embedding reserves index 0 for padding
 - held-out items never appear in the training matrix
+
+Run with `--strict-companion` wherever the companion checkout is present, so its absence
+fails loudly instead of quietly shrinking the suite.
 
 ---
 

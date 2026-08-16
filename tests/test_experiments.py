@@ -138,6 +138,39 @@ class TestManifest:
     def test_an_uncommitted_checkout_is_not_reported_as_clean(self):
         assert "uncommitted" in manifest.summary({"green_rerank": {}, "companion": {}})
 
+    def test_results_being_written_do_not_count_as_dirty_code(self, tmp_path: Path):
+        """Otherwise the dirty flag is true in every manifest and means nothing.
+
+        A sweep writes its results into the working tree, so an unfiltered
+        ``git status`` is non-empty for the entire duration of every run. The flag is
+        there to answer one question -- is the code that produced these numbers the code
+        someone can check out -- and results churn drowns it out completely.
+        """
+        import subprocess
+
+        def git(*args):
+            subprocess.run(["git", *args], cwd=tmp_path, capture_output=True, check=False)
+
+        git("init")
+        git("config", "user.email", "t@example.com")
+        git("config", "user.name", "t")
+        (tmp_path / "code.py").write_text("x = 1\n", encoding="utf-8")
+        git("add", "-A")
+        git("commit", "-m", "initial")
+
+        assert manifest.git_state(tmp_path)["dirty"] is False
+
+        # Results appear: the tree is dirty, the code is not.
+        (tmp_path / "results").mkdir()
+        (tmp_path / "results" / "runs.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+        state = manifest.git_state(tmp_path)
+        assert state["dirty"] is False
+        assert state["tree_dirty"] is True
+
+        # A real source change is still caught.
+        (tmp_path / "code.py").write_text("x = 2\n", encoding="utf-8")
+        assert manifest.git_state(tmp_path)["dirty"] is True
+
 
 # ------------------------------------------------------------------------ analysis
 
