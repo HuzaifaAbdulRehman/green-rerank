@@ -225,6 +225,98 @@ def main() -> int:
           f"never: als {'<' if order_never else '>'} multvae; "
           f"every 100: als {'<' if order_often else '>'} multvae")
 
+    # ------------------------------------------------ claim 7: quantum-inspired cost
+    section("CLAIM 7 -- QUANTUM-INSPIRED RERANKER COST")
+    rerankers_dir = ROOT / "results" / "rerankers"
+    if not (rerankers_dir / "runs.csv").exists():
+        print("  results/rerankers absent -- section 10 cannot be checked")
+    else:
+        rr_runs = pd.read_csv(rerankers_dir / "runs.csv")
+        rr_ok = rr_runs[(rr_runs.status == "ok") & rr_runs.trustworthy]
+        check("54 runs, all trustworthy", len(rr_runs) == 54 and len(rr_ok) == 54,
+              f"{len(rr_ok)} of {len(rr_runs)}")
+
+        per_user = pd.read_csv(rerankers_dir / "per_user.csv")
+        dupes = per_user.groupby(["family", "reranker", "repeat"]).user_row.apply(
+            lambda column: int(column.duplicated().sum())
+        ).sum()
+        check("no duplicated users in per_user.csv", dupes == 0 and len(per_user) == 5400,
+              f"{len(per_user)} rows, {dupes} duplicates")
+
+        table = pd.read_csv(rerankers_dir / "tables" / "ml100k.rerankers.csv")
+        qubo = table[table.reranker.str.startswith("qubo")]
+        check("qubo rerankers cost 1,200-2,300x the cheapest",
+              1200 <= qubo.cost_vs_cheapest.min() and qubo.cost_vs_cheapest.max() <= 2300,
+              f"{qubo.cost_vs_cheapest.min():.0f}x - {qubo.cost_vs_cheapest.max():.0f}x")
+        check("qubo reranking is 99.9 % of per-request cost",
+              qubo.rerank_share.min() > 0.999,
+              f"{qubo.rerank_share.min():.4%} - {qubo.rerank_share.max():.4%}")
+
+        pivot = table.pivot(index="family", columns="reranker",
+                            values="cpu_rerank_per_request")
+        ratio = (pivot.qubo_feasible / pivot.quota_mmr)
+        check("qubo_feasible costs 237-273x the fairness-aware classical baseline",
+              235 <= ratio.min() and ratio.max() <= 275,
+              f"{ratio.min():.0f}x - {ratio.max():.0f}x")
+
+        # 0.200 is the achievable optimum, not a configured target: with k=10 and four
+        # groups the per-group target is 2.5, which no integer allocation reaches, and
+        # (3,3,2,2) is the best possible. Enumerated rather than asserted.
+        import itertools
+
+        from green_rerank.companion import ensure_importable
+
+        ensure_importable()
+        from qubo_rerank.metrics import exposure_parity
+
+        k, n_groups, pool_size = 10, 4, 100
+        pool = np.array([g for g in range(n_groups) for _ in range(pool_size // n_groups)])
+        floor = min(
+            exposure_parity(
+                pool,
+                [i for g, c in enumerate(alloc) for i in np.flatnonzero(pool == g)[:c]],
+            )
+            for alloc in itertools.product(range(k + 1), repeat=n_groups)
+            if sum(alloc) == k
+        )
+        check("0.200 is the best exposure parity any list can achieve here",
+              abs(floor - 0.2) < 1e-9, f"enumerated minimum {floor:.4f}")
+
+        parity = table.groupby("reranker").exposure_parity.median()
+        check("both annealers achieve that optimum",
+              abs(parity["qubo_feasible"] - floor) < 1e-9
+              and abs(parity["qubo_tabu"] - floor) < 1e-9,
+              f"feasible {parity['qubo_feasible']:.4f}, tabu {parity['qubo_tabu']:.4f}")
+        check("no classical reranker reaches it",
+              all(parity[name] > floor + 1e-9 for name in ("quota_mmr", "mmr", "greedy_topk")),
+              f"quota_mmr {parity['quota_mmr']:.3f}, mmr {parity['mmr']:.3f}, "
+              f"greedy_topk {parity['greedy_topk']:.3f}")
+
+        tabu = table[table.reranker == "qubo_tabu"].cpu_rerank_per_request
+        check("qubo_tabu's cost is flat across families (wall-clock bounded)",
+              (tabu.max() - tabu.min()) / tabu.median() < 0.02,
+              f"{tabu.min():.4f} - {tabu.max():.4f} CPU-s, spread "
+              f"{(tabu.max() - tabu.min()) / tabu.median():.2%}")
+
+        paired_path = rerankers_dir / "tables" / "paired.csv"
+        if paired_path.exists():
+            paired = pd.read_csv(paired_path)
+            accuracy = paired[paired.metric.isin(["ndcg", "recall"])]
+            check("no reranker is distinguishable from another on accuracy",
+                  not accuracy.significant.any(),
+                  f"{int(accuracy.significant.sum())} of {len(accuracy)} significant")
+            # Only comparisons against a *different* reranker. The same reranker on
+            # another retrieval family should not differ on parity, and requiring it to
+            # would be asserting that the retrieval model drives fairness -- which the
+            # data says it does not.
+            fairness = paired[
+                (paired.metric == "exposure_parity")
+                & (~paired.config.str.endswith("quota_mmr"))
+            ]
+            check("every different-reranker parity comparison is significant",
+                  fairness.significant.all(),
+                  f"{int(fairness.significant.sum())} of {len(fairness)} significant")
+
     # -------------------------------------------------------------------- summary
     section("SUMMARY")
     print(f"  {len(PASSED)} claims verified, {len(FAILED)} failed")

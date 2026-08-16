@@ -651,23 +651,95 @@ before.
 
 ## 10. What a quantum-inspired reranker costs in a pipeline
 
-*Pending: `experiments/configs/rerankers.yaml`, awaiting an idle machine.*
+54 runs on MovieLens 100K: five rerankers plus a no-reranker baseline, across three
+retrieval families, three repeats, 100 users at depth 100. Zero failures, all rows
+trustworthy, mains power throughout, no stage below the clock quantum.
 
-All five rerankers under identical conditions — `greedy_topk`, `mmr`, `quota_mmr`,
-`qubo_feasible`, `qubo_tabu` — across three retrieval families on MovieLens 100K.
+**Cost, per request, relative to the cheapest reranker on the same family:**
 
-A preliminary run at 25 users, reported as an order of magnitude and not as a
-measurement, found `qubo_feasible` costing **~257×** greedy MMR per request while scoring
-roughly three times its NDCG and improving exposure parity. If that survives measurement
-it sharpens §9's conditional considerably: the multiplier is larger than the companion's
-wall-clock figure suggested, and it is applied to the stage that already dominates.
+| reranker | CPU-seconds / request | vs `greedy_topk` | share of serving cost | exposure parity |
+|----------|----------------------|------------------|----------------------|-----------------|
+| `greedy_topk` | 1.5–2.1e-4 | 1× | 48–61 % | 1.138 |
+| `quota_mmr` | 1.25–1.41e-3 | 7–8× | 87–93 % | 0.255 |
+| `mmr` | 1.88–1.95e-3 | 9–13× | 90–95 % | 0.968 |
+| `qubo_tabu` | 0.247 | **1,205–1,660×** | 99.9 % | **0.200** |
+| `qubo_feasible` | 0.331–0.341 | **1,622–2,290×** | 99.9 % | **0.200** |
 
-`qubo_tabu` will be reported separately and read differently. It stops on a **wall-clock
-timeout**, so its cost is fixed by construction and its *quality* is what varies with the
-machine — the companion measured it scoring better on a faster CPU at identical settings.
-In a cost study that inverts the usual relationship: a slower machine makes it look cheap
-and bad simultaneously. Every row it produces carries `time_bounded_reranker`, and its
-cost figure is not comparable to a work-bounded method's on the same axis.
+Against the fairness-aware classical baseline rather than the cheapest, `qubo_feasible`
+costs **237–273×** `quota_mmr` and `qubo_tabu` costs **176–198×**.
+
+**The reranker becomes 99.9 % of per-request cost.** At that point the retrieval model
+underneath is a rounding error: swapping ItemKNN for ALS changes the per-request total by
+less than a tenth of a percent, because both are invisible next to the annealer. §7.1's
+break-even between retrieval families simply ceases to be the relevant question.
+
+### What it buys, tested rather than eyeballed
+
+Paired per-user comparisons against `quota_mmr` within the ItemKNN family, one Holm
+correction across the reported family:
+
+| metric | `qubo_feasible` vs `quota_mmr` | verdict |
+|--------|-------------------------------|---------|
+| NDCG@10 | 6 wins / 5 losses / 89 ties | **no detectable difference** (p = 1.00) |
+| recall | 2 / 5 / 93 | **no detectable difference** (p = 1.00) |
+| exposure parity | better on 44 of 44 decided users | p < 0.0001 |
+| intra-list similarity | better on 100 of 100 | p < 0.0001 |
+
+**No reranker is distinguishable from any other on accuracy.** Every NDCG and recall
+comparison in this sweep returns p = 1.00 after correction. The differences visible in
+the medians — 0.052 against 0.048, and so on — are noise at 100 users.
+
+What the QUBO does buy is **the exact optimum of the fairness objective**, and that is a
+stronger statement than "better parity".
+
+With k = 10 and four groups the per-group target is 2.5 items, which no integer
+allocation can reach. The best achievable is (3, 3, 2, 2) — a deviation of 0.5 in each
+group — giving an exposure parity of exactly **0.200**. Verified by enumerating all
+286 allocations of ten positions across four groups.
+
+Both annealers land on 0.200 on all three families. `quota_mmr` reaches 0.255, and the
+diversity-only methods sit near 1.0. So the annealers are not merely fairer: they are
+**optimal**, at the floor imposed by the integrality of list positions, and the classical
+rerankers do not get there at any setting tested.
+
+That is the companion project's feasibility finding, restated in the metric this project
+measures: below a fairness requirement that classical methods cannot satisfy, the QUBO
+can. Here the requirement is the tightest one that exists.
+
+### A preliminary claim this refutes
+
+An earlier draft of this section reported a preliminary run at 25 users finding
+`qubo_feasible` scoring "roughly three times" the NDCG of greedy MMR. **That did not
+survive measurement.** At 100 users with three repeats and a paired test, the accuracy
+difference is not detectable at all. The preliminary figure was noise from a sample a
+quarter the size, run on a contended machine, and reporting it as an order of magnitude
+rather than a measurement was not enough caution — the direction was wrong, not just the
+magnitude.
+
+### The result agrees with the companion, arrived at independently
+
+`feasible-rerank` concluded that the QUBO's advantage is **feasibility, not accuracy**.
+This sweep reaches the same conclusion from the opposite direction — cost accounting
+rather than solution quality, a different protocol, different metrics — and adds the
+denominator that project could not supply: the advantage costs **237–273×** the classical
+fairness reranker, applied to a stage that is already 87–93 % of per-request cost.
+
+Two independent routes to one finding is worth more than either alone, and it is the
+strongest evidence in either project that the finding is about the method rather than
+about a measurement setup.
+
+### `qubo_tabu` must be read differently
+
+It stops on a **wall-clock timeout**, so its cost is fixed by construction — 0.247
+CPU-seconds per request on all three families, a flatness no work-bounded method shows —
+and its *quality* is what varies with the machine. The companion measured it scoring
+better on a faster CPU at identical settings.
+
+In a cost study that inverts the usual reading: a slower machine makes it look
+simultaneously cheap and bad. Every row carries `time_bounded_reranker`, and its cost is
+not comparable to a work-bounded method's on the same axis. It is reported because
+omitting the one method whose cost figure means something different from all the others
+would be the more misleading choice.
 
 ## 11. What this enables
 
