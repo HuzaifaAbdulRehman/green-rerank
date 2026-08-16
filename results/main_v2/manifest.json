@@ -1,0 +1,115 @@
+{
+  "created_utc": "2026-08-16T23:01:37+00:00",
+  "green_rerank": {
+    "revision": "19c535a08e2fe30e66d70a1ab829084498222d6a",
+    "branch": "master",
+    "dirty": false,
+    "tree_dirty": true
+  },
+  "companion": {
+    "revision": "5147c0d92c1b80a2ddbc79191a42eb9f04f957dc",
+    "branch": "main",
+    "dirty": false,
+    "tree_dirty": false,
+    "path": "D:\\Programming\\Projects\\qubo-rerank"
+  },
+  "packages": {
+    "numpy": "2.2.6",
+    "scipy": "1.15.3",
+    "pandas": "2.3.3",
+    "torch": "2.13.0+cpu",
+    "psutil": "7.2.2",
+    "codecarbon": "3.3.0",
+    "dimod": "0.12.22",
+    "dwave-neal": "0.6.0",
+    "dwave-samplers": "1.8.0"
+  },
+  "machine": {
+    "system": "Windows",
+    "release": "10",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 142 Stepping 10, GenuineIntel",
+    "python": "3.10.11",
+    "cpu_logical": 8,
+    "cpu_physical": 4,
+    "cpu_mhz_nominal": 1896.0,
+    "cpu_mhz_at_start": 1696.0,
+    "ram_bytes": 17031348224
+  },
+  "clock_quantum_seconds": 0.015625,
+  "config": {
+    "name": "main_v2",
+    "catalogues": [
+      "gift_cards",
+      "software",
+      "ml100k",
+      "luxury_beauty",
+      "digital_music"
+    ],
+    "families": [
+      "popularity",
+      "itemknn",
+      "als",
+      "multvae",
+      "gru4rec"
+    ],
+    "rerankers": [
+      null,
+      "quota_mmr"
+    ],
+    "n_users": 200,
+    "n_candidates": 200,
+    "k": 10,
+    "repeats": 5,
+    "seed": 0,
+    "lam": 0.3,
+    "mu": 1.0,
+    "require_mains": true,
+    "max_busy_pct": 25.0,
+    "energy": false,
+    "min_users": 50,
+    "min_items": 50,
+    "family_kwargs": {
+      "als": {
+        "epochs": 15
+      },
+      "multvae": {
+        "epochs": 10
+      },
+      "gru4rec": {
+        "epochs": 5
+      }
+    },
+    "only_on": {
+      "multvae": [
+        "ml100k"
+      ],
+      "gru4rec": [
+        "ml100k"
+      ]
+    },
+    "trust_busy_pct": 15.0
+  },
+  "preflight": {
+    "power_source": "ac",
+    "machine_busy_pct": 0.4,
+    "exclusive": true,
+    "warnings": []
+  },
+  "trustworthy": true,
+  "conditions": {
+    "power_sources_seen": [
+      "ac"
+    ],
+    "power_source_changed": false,
+    "samples": 1755,
+    "cpu_mhz_max": 1696.0,
+    "cpu_mhz_min": 1696.0,
+    "cpu_mhz_mean": 1696.0,
+    "frequency_drop": 0.0,
+    "frequency_sensor_responsive": false,
+    "throttled": null,
+    "conditions_changed": false
+  },
+  "skipped_catalogues": {}
+}
