@@ -304,6 +304,65 @@ class TestEndToEnd:
             seen = set(dataset.train[int(row)].indices.tolist())
             assert not seen & set(result.final_items[position].tolist())
 
+    def test_the_reranked_list_is_presented_in_relevance_order(self, dataset):
+        """A reranker selects a *set*; the order it returns is not a claim.
+
+        Scoring its raw output charges it for an ordering it never made -- worth up to
+        0.09 NDCG in the companion project, larger than several differences this study
+        reports. The pipeline therefore re-sorts the selection by descending retrieval
+        relevance before scoring, and this asserts it happened.
+
+        Found by mutation testing: removing the re-sort left every existing test
+        passing.
+        """
+        result = run_pipeline(
+            dataset,
+            build("itemknn"),
+            reranker="quota_mmr",
+            n_candidates=20,
+            k=5,
+            n_users=20,
+        )
+        family = build("itemknn").fit(dataset.train)
+        rows = dataset.eval_users(20, seed=0)
+        scores = family.score_users(dataset.train, rows)
+
+        for position, row in enumerate(rows):
+            chosen = result.final_items[position]
+            relevance = scores[position][chosen]
+            assert np.all(np.diff(relevance) <= 1e-9), (
+                f"user {row}: reranked list is not in descending relevance order"
+            )
+
+    def test_a_candidate_set_containing_seen_items_is_refused_not_silently_scored(self):
+        """The assertion that the cap in `run_pipeline` actually holds.
+
+        `_normalise` raises on non-finite input rather than propagating NaN. Without
+        that, a candidate set padded with -inf would yield a relevance vector of NaNs,
+        the reranker would rank on it, and the output would look ordinary.
+
+        Found by mutation testing: replacing the check with `if False` left every test
+        passing.
+        """
+        from green_rerank.pipeline.runner import _normalise
+
+        with pytest.raises(ValueError, match="non-finite"):
+            _normalise(np.array([1.0, 0.5, -np.inf]))
+
+    def test_normalise_maps_a_finite_range_onto_the_unit_interval(self):
+        from green_rerank.pipeline.runner import _normalise
+
+        out = _normalise(np.array([2.0, 4.0, 6.0]))
+        assert out.min() == 0.0 and out.max() == 1.0
+
+    def test_normalise_handles_a_flat_score_vector(self):
+        # Every candidate equally relevant is a real outcome -- popularity on a
+        # catalogue where the top-n all have the same count -- and dividing by a zero
+        # span would produce NaN for every one of them.
+        from green_rerank.pipeline.runner import _normalise
+
+        assert np.all(_normalise(np.array([3.0, 3.0, 3.0])) == 1.0)
+
     def test_k_larger_than_the_candidate_set_is_refused(self, dataset):
         with pytest.raises(ValueError, match="exceeds the candidate set"):
             run_pipeline(dataset, build("popularity"), n_candidates=5, k=10, n_users=5)

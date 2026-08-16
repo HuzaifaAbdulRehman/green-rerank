@@ -389,6 +389,55 @@ class TestPreflight:
         assert meta["machine_busy_pct"] == 3.0
 
 
+class TestBelowQuantum:
+    """A reading that could not be grown past the clock tick is not a measurement.
+
+    ``measure_repeated`` grows a window until it spans ~20 quanta. When it cannot --
+    because the repeat ceiling or the time limit fires first -- the reading is a tick
+    count, and any per-request cost derived from it is a precise-looking division of the
+    scheduler's accounting granularity. It must be flagged rather than reported.
+
+    Found by mutation testing: deleting the flag left every existing test passing, so
+    unreliable readings would have been indistinguishable from good ones in the results.
+    """
+
+    def test_a_stage_that_cannot_be_grown_is_flagged(self):
+        clock = FakeClock()
+        session = MeasurementSession(clock=clock, cpu_clock=cpu_clock_from(clock))
+
+        # Work that advances the clock by far less than one quantum, capped at a few
+        # repetitions so the window can never reach the target.
+        _, reading = session.measure_repeated(
+            "retrieve_score", "x", lambda: clock.advance(1e-9), max_repeats=3
+        )
+        assert reading.meta.get("below_quantum") is True
+
+    def test_an_expensive_stage_is_not_flagged(self):
+        """The other direction, without which the flag could always be true.
+
+        A stage that clears the target on its first call must come back clean, or every
+        row in the results would carry the warning and it would be ignored.
+        """
+        clock = FakeClock()
+        session = MeasurementSession(clock=clock, cpu_clock=cpu_clock_from(clock))
+
+        _, reading = session.measure_repeated("train", "x", lambda: clock.advance(10.0))
+        assert "below_quantum" not in reading.meta
+        assert reading.repeats == 1
+
+    def test_the_reason_for_stopping_is_recorded(self):
+        clock = FakeClock()
+        session = MeasurementSession(clock=clock, cpu_clock=cpu_clock_from(clock))
+
+        # The wall clock is the same fake clock, so a tiny advance per call trips
+        # max_seconds long before the CPU target is reached.
+        _, reading = session.measure_repeated(
+            "rerank", "x", lambda: clock.advance(0.001), max_seconds=0.05
+        )
+        assert reading.meta.get("below_quantum") is True
+        assert reading.meta.get("repeat_limit") == "max_seconds"
+
+
 class TestConditionsMonitor:
     """The guard that watches conditions *during* a run rather than before it.
 
