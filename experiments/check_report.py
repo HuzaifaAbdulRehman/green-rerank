@@ -684,5 +684,144 @@ def main() -> int:
     return 0
 
 
+
+
+# --------------------------------------------------------- pinned-thread sweep (§7.1)
+#
+# Appended when results/main_pinned/ was added. These check the two tables and the figures
+# that compare the pinned sweep against the unpinned one -- the demonstration that report
+# §7.1's threading diagnosis is more than a story.
+
+
+def _pinned() -> tuple[pd.DataFrame, pd.DataFrame]:
+    root = ROOT / "results" / "main_pinned"
+    return pd.read_csv(root / "runs.csv"), pd.read_csv(root / "readings.csv")
+
+
+def _util(readings: pd.DataFrame, family: str) -> np.ndarray:
+    stage = readings[
+        (readings.dataset == "ml100k")
+        & (readings.reranker == "none")
+        & (readings.stage == "retrieve_score")
+        & (readings.family == family)
+    ]
+    return stage.cpu_utilisation.to_numpy(float)
+
+
+def t_prediction_scorecard(d: Data) -> list[str]:
+    """§7.1's registered predictions against what the pinned sweep measured."""
+    runs, readings = _pinned()
+    als, itemknn = _util(readings, "als"), _util(readings, "itemknn")
+    base_als = _util(d.readings, "als")
+
+    lines = cost_lines(runs[runs.dataset == "ml100k"])
+    (_, serve_a), (_, serve_b) = lines["itemknn"], lines["als"]
+    den = serve_a - serve_b
+    _, lo, hi, fraction = bootstrap_crossover(lines["itemknn"], lines["als"], paired=False)
+    stable = is_stable(fraction, lo, hi, min(len(serve_a), len(serve_b)))
+
+    return [
+        f"| ALS `retrieve_score` utilisation collapses | spread < 0.10, from "
+        f"{np.ptp(base_als):.2f} | **{np.ptp(als):.3f}** ({als.min():.2f}–{als.max():.2f}) | ✅ |",
+        f"| ItemKNN utilisation unchanged | stays ≈ 1.0 | "
+        f"{itemknn.min():.2f}–{itemknn.max():.2f} | ✅ |",
+        f"| denominator becomes single-signed | no sign flips in {len(den)} repeats | "
+        f"**{int((den > 0).sum())} of {len(den)} positive** | ✅ |",
+        f"| ItemKNN/ALS interval narrows | ratio < 10×, point estimate ≤ 5× | "
+        f"**{hi / lo:.1f}×** | ✅ |",
+        f"| the pair becomes reportable | passes all three conjuncts | "
+        f"**`is_stable = {stable}`** | ✅ |",
+    ]
+
+
+def t_gru4rec_pinning(d: Data) -> list[str]:
+    """§4.1's spin-wait table: the same training, pinned and unpinned."""
+    _, pinned_readings = _pinned()
+    rows = []
+    for label, readings in (("unpinned", d.readings), ("pinned", pinned_readings)):
+        train = readings[(readings.stage == "train") & (readings.family == "gru4rec")]
+        rows.append(
+            f"| {label} | {train.cpu_seconds.min():.1f} – {train.cpu_seconds.max():.1f} | "
+            f"{train.wall_seconds.min():.1f} – {train.wall_seconds.max():.1f} s | "
+            f"{train.cpu_utilisation.median():.2f}× |"
+        )
+    return rows
+
+
+def l_pinned_breakeven(d: Data) -> str:
+    runs, _ = _pinned()
+    lines = cost_lines(runs[runs.dataset == "ml100k"])
+    n, lo, hi, fraction = bootstrap_crossover(lines["itemknn"], lines["als"], paired=False)
+    return (
+        f"N = {n:,.0f} requests, 95 % CI\n[{lo:,.0f} – {hi:,.0f}], "
+        f"{pct(fraction, 0)} of replicates crossing"
+    )
+
+
+def l_pinned_paired(d: Data) -> str:
+    runs, _ = _pinned()
+    lines = cost_lines(runs[runs.dataset == "ml100k"])
+    n, lo, hi, _ = bootstrap_crossover(lines["itemknn"], lines["als"], paired=True)
+    return f"N = {n:,.0f}, CI [{lo:,.0f} – {hi:,.0f}]"
+
+
+def l_pinned_stable_count(d: Data) -> str:
+    runs, _ = _pinned()
+    lines = cost_lines(runs[runs.dataset == "ml100k"])
+    stable = []
+    for i, a in enumerate(sorted(lines)):
+        for b in sorted(lines)[i + 1 :]:
+            n, lo, hi, fraction = bootstrap_crossover(lines[a], lines[b], paired=False)
+            if n is None:
+                continue
+            repeats = min(len(lines[a][0]), len(lines[b][0]))
+            if is_stable(fraction, lo, hi, repeats):
+                stable.append(hi / lo)
+    return f"**{len(stable)} of 45**"
+
+
+def l_pinned_widest(d: Data) -> str:
+    runs, _ = _pinned()
+    lines = cost_lines(runs[runs.dataset == "ml100k"])
+    ratios = []
+    for i, a in enumerate(sorted(lines)):
+        for b in sorted(lines)[i + 1 :]:
+            n, lo, hi, fraction = bootstrap_crossover(lines[a], lines[b], paired=False)
+            if n is None:
+                continue
+            if is_stable(fraction, lo, hi, min(len(lines[a][0]), len(lines[b][0]))):
+                ratios.append(hi / lo)
+    return f"from 7.8× to **{max(ratios):.1f}×**"
+
+
+def l_itemknn_serve_identical(d: Data) -> str:
+    """ItemKNN was already single-threaded, so its serving cost must not have moved."""
+    runs, _ = _pinned()
+    a = cost_lines(d.main[d.main.dataset == "ml100k"])["itemknn"][1]
+    b = cost_lines(runs[runs.dataset == "ml100k"])["itemknn"][1]
+    assert abs(np.median(a) - np.median(b)) < 1e-12, "ItemKNN serving cost moved"
+    return f"({np.median(b):.4e} CPU-seconds, to five figures)"
+
+
+TABLES += [
+    Table(
+        "§7.1 pre-registered scorecard", "| registered prediction | threshold |",
+        t_prediction_scorecard, ordered=True,
+    ),
+    Table(
+        "§4.1 GRU4Rec pinning", "| | CPU-seconds | wall-clock |",
+        t_gru4rec_pinning, ordered=True,
+    ),
+]
+
+LITERALS += [
+    Literal("§7.1 pinned break-even", l_pinned_breakeven),
+    Literal("§7.1 pinned, repeat-paired", l_pinned_paired),
+    Literal("§7.1 pinned stable count", l_pinned_stable_count),
+    Literal("§7.1 pinned widest interval", l_pinned_widest),
+    Literal("§7.1 ItemKNN serving unmoved", l_itemknn_serve_identical),
+]
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

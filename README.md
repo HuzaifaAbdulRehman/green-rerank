@@ -48,8 +48,8 @@ hardware the answer is no, and that is a result rather than an obstacle.
 ## What it found
 
 170 measured runs across five catalogues (147 to 11,268 items), five model families and
-two reranking conditions, five repeats each, plus 90 runs on retrieval depth and 63 on
-rerankers. Zero failures, every row passing the trust check on an idle mains-powered
+two reranking conditions, five repeats each, plus 90 runs on retrieval depth, 63 on
+rerankers, and a further 170 repeating the main sweep with the BLAS thread count pinned. Zero failures, every row passing the trust check on an idle mains-powered
 machine, no stage falling below the clock quantum. Full write-up in
 [`docs/report.md`](docs/report.md).
 
@@ -60,14 +60,25 @@ superseded and must not be cited**; `results/README.md` records what was wrong w
 Several claims are weaker than they were and two are retracted — marked as such, because a
 report whose confidence never moves is not evidence of anything.
 
-**The break-even method works; the comparison this README used to lead with does not
-reproduce.** 12 of 45 configuration pairs on MovieLens 100K cross stably enough to report,
-with 95 % intervals only 1.1× to 7.8× wide. ItemKNN against ALS is **not** one of them: its
-interval spans **123×** and the sign of its denominator flips across repeats. The cause is
-that CPU-seconds counts every thread while BLAS re-picks its thread count per process, so
-ALS's serving cost varies more between repeats than it differs from ItemKNN's. **Pin
-`OMP_NUM_THREADS=1` before measuring cost.** That diagnosis is more transferable than the
-number it replaces.
+**A break-even volume is measurable — but only once the cost unit is pinned, and that is the
+finding.** Measured the way most studies would, ItemKNN against ALS on MovieLens 100K gives
+an interval spanning **123×** with its denominator changing sign across repeats of identical
+work: no reportable answer. The cause is the unit. CPU-seconds counts every thread and BLAS
+re-picks its thread count per process, so ALS's scoring stage varied 1.38–2.47× in
+utilisation while ItemKNN's, single-threaded, held at 1.00.
+
+Pinning the thread count was **pre-registered as a prediction and then tested** — the
+predictions are stamped in `results/main_pinned/manifest.json` before the run produced
+anything. All five held: ALS's variance collapses to 0.019, the denominator becomes
+single-signed in 5 of 5 repeats, and the break-even becomes **N = 48,011 requests, 95 % CI
+[41,952 – 52,914]** — a 1.3× interval with 100 % of replicates crossing. Stable pairs go
+from 12 of 45 to 13, and the widest stable interval from 7.8× to 2.7×. Accuracy is
+bit-identical across both sweeps, so only the cost column moved.
+
+**So: pin `OMP_NUM_THREADS=1` before measuring cost.** Unpinned, GRU4Rec's training reports
+414.6–478.0 CPU-seconds; pinned, the same work reports **78.7–80.9** and finishes *faster*
+in wall-clock (79–81 s against 104–121 s). The extra 5.4× was threads spin-waiting, charged
+as work — so CPU-seconds is not just noisier on parallel stages, it is **biased upward**.
 
 **Fairness reranking is 81.6–97.6 % of per-request cost**, multiplying serving cost 5.7× to
 42.8×. A deployer adding exposure fairness to a popularity baseline on MovieLens 100K is
@@ -88,9 +99,9 @@ with depth is **retracted** (ρ = −0.115, p = 0.45); the recommendation stands
 
 **On MovieLens 100K, nothing tested beats recommending the most popular items
 reproducibly.** ItemKNN, ALS and MultVAE reach significance in 0 of 5 repeats. GRU4Rec
-reaches it in **1 of 5** — for 417.9 CPU-seconds of training against popularity's 1.58e-4,
-a factor of **2.6 million**. The earlier claim that GRU4Rec beats the baseline there rested
-on a single repeat.
+reaches it in **1 of 5** — for 79.4 CPU-seconds of training against popularity's 1.58e-4,
+a factor of **502,412** (2.6 million if measured unpinned, inflated by thread spin-wait).
+The earlier claim that GRU4Rec beats the baseline there rested on a single repeat.
 
 ML-100K is the **exception**: ItemKNN beats popularity in every repeat on three of the other
 four catalogues, and in 4 of 5 repeats on the fourth. A method validated only on ML-100K —

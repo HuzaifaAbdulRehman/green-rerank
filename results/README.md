@@ -13,6 +13,7 @@ Each directory is one experiment, self-describing, and produced by one code vers
 | `rerankers/` | the first reranker comparison — **superseded**, see below |
 | `rerankers_v2/` | rerankers including `balanced_quota`, the baseline that decides the QUBO question |
 | `main_v2/`, `depth_v2/` | regenerated against the corrected companion |
+| `main_pinned/` | `main_v2/` repeated with `OMP_NUM_THREADS=1`. Tests report §7.1's threading diagnosis against predictions registered in its own manifest before the run. **Not a correction of `main_v2/`** — a second measurement condition; absolute costs are not comparable between them, which is the point |
 | `plumbing/` | driver validation only — every row stamped `trustworthy=False`, not a measurement |
 
 ## Which directories are current
@@ -29,6 +30,13 @@ interaction-matrix defect.**
 | `rerankers/` | It omitted `balanced_quota`, so the annealers were compared against a heuristic with no remainder rule rather than against correct apportionment. Also: both annealers were unseeded, and `lam` differed between the classical (0.5) and QUBO (0.3) solvers, so the two families optimised different objectives. | **No** — `companion dirty=True` |
 | `validity/` | Taken at `511d993` against a superseded companion. Two of the claims report §5 drew from it did not reproduce when the experiment was re-run: utilisation is not reliably pinned at exactly 0 %, and the fully loaded run does **not** report less total energy than idle. | **No** — `green_rerank dirty=True` |
 | `energy/` | The meter-enabled sweep behind the deleted report §5.1. Its regression may well have been right; it cannot be regenerated, so the section was removed rather than restated. | **No** — `green_rerank dirty=True` |
+
+`main_pinned/` does not supersede `main_v2/` either. The two differ only in BLAS thread
+count, and report §7.1 compares them: `main_v2/` is what the study measures when the unit is
+left to its default, `main_pinned/` is the same experiment with the confound removed. Keeping
+both is what makes the diagnosis testable rather than asserted. Every accuracy figure is
+bit-identical across the pair, which is the control proving the intervention touched only
+cost.
 
 `validity_v2/` and `validity_v2_repeat1/` are **both current** — they are two runs of one
 experiment, not a replacement and an original. §5 reports the pair because the backend's
@@ -57,6 +65,9 @@ are measured wall-clock from the committed manifests.
 ```bash
 # main_v2 -- the primary sweep, 170 runs, ~33 min
 python -m experiments.sweep --config experiments/configs/main_v2.yaml
+
+# main_pinned -- the same sweep with the thread count pinned, 170 runs, ~24 min
+OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1   python -m experiments.sweep --config experiments/configs/main_pinned.yaml
 
 # depth_v2 -- retrieval-depth sensitivity, 90 runs, ~5 min
 python -m experiments.sweep --config experiments/configs/depth_v2.yaml

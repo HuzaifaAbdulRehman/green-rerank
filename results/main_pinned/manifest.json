@@ -1,0 +1,128 @@
+{
+  "created_utc": "2026-08-17T14:49:04+00:00",
+  "green_rerank": {
+    "revision": "fca5ce3c14fe1b48b527454e581c6c2d59ed1463",
+    "branch": "main",
+    "dirty": false,
+    "tree_dirty": false
+  },
+  "companion": {
+    "revision": "5147c0d92c1b80a2ddbc79191a42eb9f04f957dc",
+    "branch": "main",
+    "dirty": false,
+    "tree_dirty": false,
+    "path": "D:\\Programming\\Projects\\qubo-rerank"
+  },
+  "packages": {
+    "numpy": "2.2.6",
+    "scipy": "1.15.3",
+    "pandas": "2.3.3",
+    "torch": "2.13.0+cpu",
+    "psutil": "7.2.2",
+    "codecarbon": "3.3.0",
+    "dimod": "0.12.22",
+    "dwave-neal": "0.6.0",
+    "dwave-samplers": "1.8.0"
+  },
+  "machine": {
+    "system": "Windows",
+    "release": "10",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 142 Stepping 10, GenuineIntel",
+    "python": "3.10.11",
+    "cpu_logical": 8,
+    "cpu_physical": 4,
+    "cpu_mhz_nominal": 1896.0,
+    "cpu_mhz_at_start": 1696.0,
+    "ram_bytes": 17031348224
+  },
+  "clock_quantum_seconds": 0.015625,
+  "config": {
+    "name": "main_pinned",
+    "catalogues": [
+      "gift_cards",
+      "software",
+      "ml100k",
+      "luxury_beauty",
+      "digital_music"
+    ],
+    "families": [
+      "popularity",
+      "itemknn",
+      "als",
+      "multvae",
+      "gru4rec"
+    ],
+    "rerankers": [
+      null,
+      "quota_mmr"
+    ],
+    "n_users": 200,
+    "n_candidates": 200,
+    "k": 10,
+    "repeats": 5,
+    "seed": 0,
+    "lam": 0.3,
+    "mu": 1.0,
+    "require_mains": true,
+    "max_busy_pct": 25.0,
+    "energy": false,
+    "min_users": 50,
+    "min_items": 50,
+    "family_kwargs": {
+      "als": {
+        "epochs": 15
+      },
+      "multvae": {
+        "epochs": 10
+      },
+      "gru4rec": {
+        "epochs": 5
+      }
+    },
+    "prediction": {
+      "registered_before_run": true,
+      "mechanism_under_test": "ALS's per-request cost in CPU-seconds inherits BLAS's runtime thread-count decision. Pinning the thread count removes that source of variance from the crossover's denominator.\n",
+      "expected": {
+        "als_retrieve_score_utilisation": "collapses to approximately 1.0 on every repeat, with a max-min spread below 0.10. Baseline spread in main_v2 is 1.09 (1.38 to 2.47).\n",
+        "itemknn_retrieve_score_utilisation": "unchanged at approximately 1.0. It was already single-threaded, so a change here would mean the pinning did something other than what is claimed.\n",
+        "denominator_sign": "single-signed across all five repeats. In main_v2 it read -3.16e-05, +3.80e-07, +3.68e-05, +3.26e-05, +3.88e-05 -- one sign flip in five.\n",
+        "itemknn_vs_als_ci_ratio": "falls below the 10x stability threshold. Point prediction 5x or tighter, against 123x in main_v2.\n",
+        "is_stable_verdict": "the pair passes all three conjuncts (crossing >= 0.9, CI ratio < 10x, repeats >= 3) and becomes reportable.\n"
+      },
+      "falsified_if": "ALS's utilisation collapses as predicted AND the CI ratio stays above 10x. That would mean thread-count variance was not what made the pair unidentifiable, and \u00a77.1's mechanism is wrong or incomplete. This is the more interesting outcome and is to be reported as such, not softened into \"partially improved\".\n",
+      "not_predicted": "The value of N itself, and whether the two lines cross at all. Pinning threads lowers ALS's measured per-request CPU-seconds toward its true single-thread cost, which changes the denominator's magnitude as well as its stability. The lines may cross at a materially different volume, or one family may dominate at every volume and the crossing cease to exist. Domination is a legitimate finding, not a failed run. Absolute costs in this directory are NOT comparable to main_v2 for any purpose other than variance: single-threaded wall-clock is longer and CPU-seconds lower by construction.\n"
+    },
+    "only_on": {
+      "multvae": [
+        "ml100k"
+      ],
+      "gru4rec": [
+        "ml100k"
+      ]
+    },
+    "trust_busy_pct": 15.0
+  },
+  "preflight": {
+    "power_source": "ac",
+    "machine_busy_pct": 1.9,
+    "exclusive": true,
+    "warnings": []
+  },
+  "trustworthy": true,
+  "conditions": {
+    "power_sources_seen": [
+      "ac"
+    ],
+    "power_source_changed": false,
+    "samples": 1463,
+    "cpu_mhz_max": 1696.0,
+    "cpu_mhz_min": 1696.0,
+    "cpu_mhz_mean": 1696.0,
+    "frequency_drop": 0.0,
+    "frequency_sensor_responsive": false,
+    "throttled": null,
+    "conditions_changed": false
+  },
+  "skipped_catalogues": {}
+}

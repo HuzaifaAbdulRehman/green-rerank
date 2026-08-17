@@ -21,14 +21,26 @@ anything.
 
 ## Summary of findings
 
-**The break-even method works; the comparison the earlier draft led with does not
-reproduce.** Of 45 configuration pairs on MovieLens 100K, **12 produce a break-even
-request volume stable enough to report**, with 95 % bootstrap intervals spanning only
-1.1× to 7.8×. ItemKNN against ALS — the pair the first draft put in its opening sentence
-— is **not** one of them: its interval spans **123×** and the sign of its denominator
-flips across repeats of identical work. The cause is a specific, transferable property of
-the cost unit, and diagnosing it is a more useful contribution than the number it
-replaces. §7.1
+**A break-even volume is measurable, but only once the cost unit is pinned — and that is
+the finding.** Measured as most studies would, ItemKNN against ALS on MovieLens 100K gives
+an interval spanning **123×** with the sign of its denominator flipping across repeats of
+identical work: no reportable answer. The cause is a transferable property of the unit —
+CPU-seconds counts every thread, and BLAS re-decides its thread count per process, so ALS's
+scoring stage varied 1.38–2.47× in utilisation while ItemKNN's, single-threaded, held at
+1.00. Pinning the thread count was **pre-registered as a prediction and then tested**: it
+collapses ALS's variance to 0.019, makes the denominator single-signed in 5 of 5 repeats,
+and yields **N = 48,011 requests, 95 % CI [41,952 – 52,914]** — a 1.3× interval, 100 % of
+replicates crossing. Stable pairs go from 12 of 45 to 13, and the widest stable interval
+from 7.8× to 2.7×. Accuracy is bit-identical across both sweeps, so only the cost column
+moved. §7.1
+
+**Measure cost with `OMP_NUM_THREADS=1`.** This is the single most actionable sentence in
+the report. Unpinned, GRU4Rec's training reported **414.6–478.0 CPU-seconds**; pinned, the
+same work reports **78.7–80.9** — and finishes *faster* in wall-clock (79–81 s against
+104–121 s). The extra 5.4× was threads spin-waiting, charged as work. So CPU-seconds does
+not merely become noisy on thread-parallel stages, it becomes **biased upward**, and any
+study using CPU-time, core-seconds, or a utilisation-derived power proxy inherits that bias
+invisibly. §4.1
 
 **A fairness reranker is 81.6–97.6 % of per-request serving cost**, multiplying serving
 cost **5.7× to 42.8×**. Adding exposure fairness to a popularity baseline on MovieLens
@@ -49,8 +61,9 @@ p = 0.45. The recommendation survives on cost alone. §7.6
 
 **MovieLens 100K is an outlier, and it is the catalogue everyone uses.** There, nothing
 tested beats recommending the globally most popular items reproducibly — including
-GRU4Rec, which reaches significance in **1 of 5 repeats** despite costing 2.6 million
-times popularity's training cost. ItemKNN beats popularity in every repeat on three of the
+GRU4Rec, which reaches significance in **1 of 5 repeats** despite costing 502,412 times
+popularity's training cost when both are measured with threads pinned (2.6 million
+unpinned, inflated by the spin-wait of §4.1). ItemKNN beats popularity in every repeat on three of the
 other four catalogues. A method validated only on ML-100K can be reported as beating a
 baseline it does not beat. §7.5
 
@@ -175,11 +188,34 @@ OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
   python -m experiments.sweep --config experiments/configs/main_v2.yaml
 ```
 
-This trades throughput for identifiability and would very likely have made the ItemKNN /
-ALS crossing reportable. It is stated here, in the method, rather than as a footnote,
-because it is the single change most likely to matter to someone repeating this work. The
-sweeps below were **not** run that way, and §7.1 reports the consequence rather than
-hiding it.
+§7.1 registered that prediction and then tested it: pinning does make the ItemKNN/ALS
+crossing reportable. It is stated here, in the method, rather than as a footnote, because it
+is the single change most likely to matter to someone repeating this work. The sweeps in §7.2
+onward were **not** run that way, and each reports the consequence rather than hiding it.
+
+**Pinning is not only a variance fix — it also removes an upward bias, and that was not
+anticipated.** The expectation was a throughput cost: single-threaded runs should take longer
+in wall-clock while reporting the same CPU-seconds, since CPU-seconds counts thread-time
+either way. The measurement disagrees. GRU4Rec's training:
+
+| | CPU-seconds | wall-clock | utilisation |
+|---|---|---|---|
+| unpinned | 414.6 – 478.0 | 103.8 – 120.6 s | 3.99× |
+| pinned | 78.7 – 80.9 | 79.0 – 81.1 s | 1.00× |
+
+The same work, the same result to the last digit of NDCG, for **5.4× fewer CPU-seconds** and
+*less* wall-clock. Four threads were not doing four threads' work: most of that CPU time was
+OpenMP spin-waiting at synchronisation points, which the kernel charges as busy and
+`process_time()` therefore counts. On a model this small the coordination cost exceeded the
+parallel gain, so threading lost on both axes at once. MultVAE shows the same pattern (3.6–5.4
+to 1.1–2.5 CPU-seconds, utilisation 4.00 → 1.00); ALS's *training* was already effectively
+serial at 1.02× and barely moves.
+
+The consequence for anyone reusing this unit is sharper than §7.1's variance argument.
+CPU-seconds on a thread-parallel stage is not a noisy estimate of work — it is an estimate
+inflated by however much the threads spend waiting, which is a property of the model size and
+the thread count rather than of the algorithm being measured. Every unpinned training figure
+in §7.4 and §7.5 carries that inflation, and the report says so where they appear.
 
 Joules are reported only through `Reading.joules(watts_per_cpu_second)`, which has **no
 default argument**. A joule figure cannot appear anywhere in this project's output
@@ -593,6 +629,54 @@ The shaded band is the bootstrap interval and the faint lines are the individual
 The plot is kept, unflattering, because the width the band claims is visibly earned and
 the divergence of the repeats is the finding.
 
+#### The diagnosis was tested, and it holds
+
+The paragraphs above were, until this revision, an explanation with nothing behind it. A
+mechanism that predicts a fix but never runs it is a story. So the sweep was repeated with
+the thread count pinned — `results/main_pinned/`, 170 runs, identical parameters, zero
+failures — and **the predictions were registered in that run's own manifest before it
+started**, so the result was able to contradict them. They are in
+`results/main_pinned/manifest.json` under `config.prediction`, fixed at launch.
+
+| registered prediction | threshold | measured | |
+|---|---|---|---|
+| ALS `retrieve_score` utilisation collapses | spread < 0.10, from 1.10 | **0.019** (0.99–1.01) | ✅ |
+| ItemKNN utilisation unchanged | stays ≈ 1.0 | 0.98–1.03 | ✅ |
+| denominator becomes single-signed | no sign flips in 5 repeats | **5 of 5 positive** | ✅ |
+| ItemKNN/ALS interval narrows | ratio < 10×, point estimate ≤ 5× | **1.3×** | ✅ |
+| the pair becomes reportable | passes all three conjuncts | **`is_stable = True`** | ✅ |
+
+**The break-even between ItemKNN and ALS on MovieLens 100K is N = 48,011 requests, 95 % CI
+[41,952 – 52,914], 100 % of replicates crossing.** The repeat-paired scheme agrees at
+N = 48,483, CI [43,834 – 51,156] — a 1.2× interval, and the two schemes now overlap almost
+entirely rather than merely sharing a diagnosis. Below roughly 48,000 requests the
+neighbourhood model is the cheaper deployment; above it, the factor model.
+
+The effect is not confined to the one pair. Pinning takes the stable count from 12 of 45 to
+**13 of 45**, and collapses the whole distribution of interval widths: the widest stable
+interval falls from 7.8× to **2.7×**, and nine of the thirteen are at or below 1.1×.
+
+`is_stable` did the job it was designed for. It refused a number that a single sweep would
+have reported as `N = 112,730` with a plausible-looking interval, held that refusal through
+a regeneration, and admitted the pair only once the measurement actually became
+identifiable. The threshold was not tuned to this outcome — it was committed, with its
+justification, before this sweep existed.
+
+**Why N moved by 4.5×, which was explicitly not predicted.** ItemKNN's per-request cost is
+*identical* in both sweeps (1.7756e-04 CPU-seconds, to five figures) because it was already
+single-threaded. ALS's fell from 1.5152e-04 to 1.1133e-04, and its one-off cost from 5.586
+to 3.188. Removing the thread inflation therefore widened the denominator from ~2.6e-05 to
+~6.6e-05 while shrinking the numerator, and both changes push the crossing down. The
+earlier figure was not merely uncertain; it was centred in the wrong place, and the sign of
+that bias was not knowable from the unpinned data.
+
+**The control that makes this trustworthy:** every accuracy figure is bit-identical across
+the two sweeps. On MovieLens 100K the median NDCG is 0.0527, 0.0471, 0.0685, 0.0448 and
+0.0995 for popularity, ItemKNN, ALS, MultVAE and GRU4Rec in *both*. Pinning changed the
+cost column and nothing else, which is what a threading intervention should do — and it is
+the same signature §4.3 warns about (quality unmoved while cost moves by a factor), here
+produced deliberately as a check rather than encountered as a defect.
+
 ### 7.2 The cost of fairness reranking
 
 **The reranker accounts for 81.6 – 97.6 % of per-request cost, multiplying serving cost by
@@ -771,7 +855,12 @@ What the data does support is narrower and still worth saying:
   *nothing* tested beats recommending the globally most popular items reproducibly.
   ItemKNN, ALS and MultVAE reach significance in 0 of 5 repeats. **GRU4Rec reaches it in
   1 of 5** (Holm-corrected p of 0.041, 0.459, 0.720, 1.000, 1.000) — for 417.9
-  CPU-seconds of training against popularity's 1.58e-4, a factor of **2.6 million**. The
+  CPU-seconds of training against popularity's 1.58e-4, a factor of **2.6 million**. That
+  ratio is inflated by the spin-wait §4.1 documents: measured with threads pinned the same
+  training costs 79.4 CPU-seconds and the factor is **502,412**. Both are stated because
+  the unpinned figure is what this sweep measured and the pinned one is what the work
+  actually costs; either way the conclusion is the same, and it is about reproducibility
+  rather than magnitude. The
   earlier draft reported GRU4Rec as beating the baseline on that catalogue, from a single
   repeat. It does not, reproducibly. This makes the outlier claim stronger, not weaker.
 - **The winner is catalogue-dependent.** ALS beats popularity in every repeat on two
@@ -1162,11 +1251,15 @@ magnitude.
 Five things this harness makes askable, listed because each is a piece of work rather than
 a wish. Three of them exist because a claim above had to be withdrawn.
 
-**Whether the break-even transfers once the unit is pinned.** §7.1's failure has a stated
-cause and a one-line mitigation. Re-running the main sweep under
-`OMP_NUM_THREADS=1` would say whether ItemKNN against ALS becomes reportable, and would
-test the §4.1 diagnosis directly rather than by inference. This is the single highest-value
-next run and it costs about 75 minutes.
+**Whether the pinned figures hold on other hardware.** ~~Re-running the main sweep under
+`OMP_NUM_THREADS=1`~~ — **done**, `results/main_pinned/`, and §7.1 reports it: the
+pre-registered predictions held and the ItemKNN/ALS break-even became reportable at
+N = 48,011 with a 1.3× interval. What remains open is whether the *pinned* crossing
+transfers. Pinning removed a machine-specific artefact, so the pinned request count has a
+better claim to portability than the unpinned one ever did — but that is an argument, and
+the same sweep on a different core count would test it. Note also that pinning cost nothing
+in wall-clock here (23.9 minutes of measured stage time against 28.9 unpinned), so the
+throughput objection to measuring this way did not materialise at this scale.
 
 **Where the crossover moves across machines.** The break-even is a property of a machine as
 well as a model. The same sweep on hardware with working RAPL would say whether the
