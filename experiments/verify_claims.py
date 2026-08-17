@@ -1,18 +1,34 @@
-"""Re-derive every claim this project makes, from the results on disk.
+"""Re-derive every claim from the rawest artifact that can support it.
 
-Not a test. Tests assert that the code is right; this asserts that the *claims* are
-right -- that each sentence in the README and report is still supported by the data in
-`results/`. Those drift apart silently, and this project has already caught itself doing
-it once.
+Not a test. Tests assert the code is right; this asserts the *claims* are right.
 
-Every check names the claim it verifies and prints the value it found, so a failure says
-which sentence to change rather than only that something is wrong.
+**Rebuilt after an external audit found the previous version substantially
+tautological.** It read `tables/*.csv` -- the output of `analyse.py` -- and asserted
+those files said what the report said. "analyse.py wrote 112,730; the verifier confirms
+analyse.py wrote 112,730" is not verification: a bug in the derivation is invisible to a
+check that consumes the derivation.
+
+So nothing here reads `tables/`. Every figure is recomputed from `runs.csv`,
+`readings.csv`, `per_user.csv`, `graded_load.csv` or the manifests, with the arithmetic
+written out locally even where that duplicates `analyse.py`. The duplication is the
+point: two independent implementations that disagree is a signal, and one implementation
+checking itself is not.
+
+Each check declares its evidence class:
+
+* ``RAW``   -- recomputed from measurement records, independent of the analysis code.
+* ``ARITH`` -- deterministic arithmetic on RAW values (a cost model, a ratio).
+
+A claim that can only be supported by a table the analysis wrote has no place here; if
+one appears, it is a finding rather than a check.
 
     python -m experiments.verify_claims
+    python -m experiments.verify_claims --results results/main_v2
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -24,302 +40,442 @@ PASSED: list[str] = []
 FAILED: list[str] = []
 
 
-def check(claim: str, condition: bool, found: str) -> None:
+def check(claim: str, condition: bool, found: str, evidence: str = "RAW") -> None:
     (PASSED if condition else FAILED).append(claim)
-    print(f"  {'PASS' if condition else 'FAIL'}  {claim}\n        found: {found}")
+    print(f"  [{evidence:5}] {'PASS' if condition else 'FAIL'}  {claim}\n           found: {found}")
 
 
 def section(title: str) -> None:
     print(f"\n{title}\n{'=' * len(title)}")
 
 
-def main() -> int:
-    main_dir = ROOT / "results" / "main"
-    runs = pd.read_csv(main_dir / "runs.csv")
-    ok = runs[(runs.status == "ok") & runs.trustworthy]
+def load(directory: Path) -> pd.DataFrame:
+    frame = pd.read_csv(directory / "runs.csv")
+    return frame[(frame.get("status", "ok") == "ok") & frame.get("trustworthy", True)]
 
-    # ---------------------------------------------------------------- provenance
-    section("PROVENANCE")
-    check("170 runs, zero failures", len(runs) == 170 and (runs.status == "failed").sum() == 0,
-          f"{len(runs)} runs, {(runs.status == 'failed').sum()} failed")
-    check("every row trustworthy", len(ok) == 170, f"{len(ok)} of {len(runs)}")
-    check("five catalogues", runs.dataset.nunique() == 5, ", ".join(sorted(runs.dataset.unique())))
-    check("five families", runs.family.nunique() == 5, ", ".join(sorted(runs.family.unique())))
-    check("five repeats per cell", set(runs.repeat) == {0, 1, 2, 3, 4},
-          str(sorted(set(runs.repeat))))
+
+# ------------------------------------------------------------------ recomputation
+
+
+def cost_lines(frame: pd.DataFrame) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """``label -> (once[], per_request[])`` straight from the run rows."""
+    out = {}
+    for (family, reranker), group in frame.groupby(["family", "reranker"], sort=False):
+        group = group.sort_values("repeat")
+        label = family if reranker == "none" else f"{family}+{reranker}"
+        out[label] = (
+            group.cpu_once.to_numpy(dtype=float),
+            group.cpu_per_request.to_numpy(dtype=float),
+        )
+    return out
+
+
+def crossover_of(once_a, serve_a, once_b, serve_b):
+    """``N`` where the two cost lines meet, or None. Written out, not imported.
+
+    The sign test is on ``n``, not on the denominator. An earlier version of this
+    function required ``serve_a > serve_b`` and so silently dropped every crossing where
+    the roles are reversed -- both gaps negative, quotient still positive, a perfectly
+    real crossing. It reported 2 stable pairs where there are 12, which is the kind of
+    error a verifier that merely re-read the analysis could never have exposed.
+
+    **A near-zero denominator is deliberately not clamped, and this is not an oversight.**
+    A serving-cost gap of +3.8e-07 yields N = 14.6 million, and +1e-12 yields 5.6 trillion.
+    Those values are mathematically correct -- near-parallel cost lines really do cross
+    very far out -- and suppressing them here would hide the pathology inside a function
+    that has no way to report it. It is caught by :func:`is_stable`, whose interval-width
+    bound exists for exactly this case. Do not add a magnitude cutoff.
+    """
+    denominator = serve_a - serve_b
+    if denominator == 0:
+        return None
+    n = (once_b - once_a) / denominator
+    return float(n) if n > 0 else None
+
+
+def bootstrap_crossover(a, b, paired: bool, n_boot: int = 2000, seed: int = 0):
+    """Percentile bootstrap over repeats, under either resampling scheme.
+
+    ``paired`` draws one index vector and applies it to both families; independent
+    draws two. The two disagree exactly when a run's conditions affect both families
+    together, which is the case a shared machine creates.
+    """
+    rng = np.random.default_rng(seed)
+    (once_a, serve_a), (once_b, serve_b) = a, b
+    n = min(len(once_a), len(once_b))
+    crossings = []
+    for _ in range(n_boot):
+        ia = rng.integers(0, n, size=n)
+        ib = ia if paired else rng.integers(0, n, size=n)
+        value = crossover_of(
+            float(np.median(once_a[ia])), float(np.median(serve_a[ia])),
+            float(np.median(once_b[ib])), float(np.median(serve_b[ib])),
+        )
+        if value is not None:
+            crossings.append(value)
+    fraction = len(crossings) / n_boot
+    if not crossings:
+        return None, None, None, fraction
+    v = np.asarray(crossings)
+    return (
+        float(np.median(v)),
+        float(np.quantile(v, 0.025)),
+        float(np.quantile(v, 0.975)),
+        fraction,
+    )
+
+
+#: Stability, replacing the crossing-fraction-only rule the audit showed was inadequate.
+#:
+#: The old rule passed ItemKNN-vs-ALS at 94 % crossing while its interval spanned 123x.
+#: A test that admits a two-order-of-magnitude interval is not a stability test.
+#:
+#: The width bound is 10x, and it is not tuned to the result: across the twelve other
+#: stable pairs the CI ratio runs 1.1x to 7.8x, then jumps to 123x. The threshold sits in
+#: an empty region of the observed distribution.
+MIN_CROSSING = 0.9
+MAX_CI_RATIO = 10.0
+MIN_REPEATS = 3
+
+
+def is_stable(fraction: float, lo: float | None, hi: float | None, repeats: int) -> bool:
+    if lo is None or hi is None or lo <= 0:
+        return False
+    return fraction >= MIN_CROSSING and (hi / lo) < MAX_CI_RATIO and repeats >= MIN_REPEATS
+
+
+# ------------------------------------------------------------------------ sections
+
+
+def provenance(directory: Path, runs: pd.DataFrame) -> None:
+    section(f"PROVENANCE -- {directory.name}")
+    book = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    conditions = json.loads((directory / "conditions.json").read_text(encoding="utf-8"))
+
+    check("zero failed runs",
+          (pd.read_csv(directory / "runs.csv").status == "failed").sum() == 0,
+          f"{len(runs)} usable rows")
+    check("every row trustworthy", len(runs) == len(pd.read_csv(directory / "runs.csv")),
+          f"{len(runs)} of {len(pd.read_csv(directory / 'runs.csv'))}")
+    check("both repositories clean at measurement time",
+          book["green_rerank"]["dirty"] is False and book["companion"]["dirty"] is False,
+          f"green {book['green_rerank']['revision'][:7]} "
+          f"dirty={book['green_rerank']['dirty']}, "
+          f"companion {book['companion']['revision'][:7]} "
+          f"dirty={book['companion']['dirty']}")
+    check("mains power throughout, no condition change",
+          conditions["power_sources_seen"] == ["ac"] and not conditions["conditions_changed"],
+          f"{conditions['power_sources_seen']}, conditions_changed="
+          f"{conditions['conditions_changed']}, {conditions['samples']} samples")
+
     below = runs.below_quantum.astype(str)
     check("no stage below the clock quantum",
           ((below == "") | (below == "nan")).all(),
           f"{(~((below == '') | (below == 'nan'))).sum()} rows flagged")
 
-    conditions = json.loads((main_dir / "conditions.json").read_text(encoding="utf-8"))
-    check("mains power throughout, no throttling",
-          conditions["power_sources_seen"] == ["ac"] and not conditions["conditions_changed"],
-          f"{conditions['power_sources_seen']}, drop {conditions['frequency_drop']:.1%}, "
-          f"{conditions['samples']} samples")
 
-    # ------------------------------------------------------------ claim 1: break-even
-    section("CLAIM 1 -- BREAK-EVEN")
-    be = pd.read_csv(main_dir / "tables" / "ml100k.breakeven.csv")
-    row = be[(be.a == "itemknn") & (be.b == "als")].iloc[0]
-    check("ItemKNN vs ALS crosses at N = 112,730",
-          abs(row.n_requests - 112730) < 100, f"N = {row.n_requests:,.0f}")
-    check("95 % CI [51,128 - 180,720]",
-          abs(row.lo - 51128) < 200 and abs(row.hi - 180720) < 400,
-          f"[{row.lo:,.0f}, {row.hi:,.0f}]")
-    check("95 % of replicates cross", abs(row.replicates_crossing - 0.95) < 0.01,
-          f"{row.replicates_crossing:.1%}")
-    check("the crossover is marked stable", bool(row.stable), str(bool(row.stable)))
+def breakeven(runs: pd.DataFrame) -> None:
+    section("BREAK-EVEN -- method, and the headline pair separately")
+    lines = cost_lines(runs[runs.dataset == "ml100k"])
 
-    stable = be[be.stable & be.n_requests.notna()]
-    check("13 of 45 pairs cross stably on ml100k",
-          len(stable) == 13 and len(be) == 45, f"{len(stable)} of {len(be)}")
+    results = []
+    labels = sorted(lines)
+    for i, a in enumerate(labels):
+        for b in labels[i + 1 :]:
+            n, lo, hi, frac = bootstrap_crossover(lines[a], lines[b], paired=False)
+            if n is None:
+                continue
+            repeats = min(len(lines[a][0]), len(lines[b][0]))
+            results.append((a, b, n, lo, hi, frac, hi / lo if lo else np.inf,
+                            is_stable(frac, lo, hi, repeats)))
 
-    # The crossover must actually be where the two cost lines meet.
-    cost = pd.read_csv(main_dir / "tables" / "ml100k.cost.csv")
-    knn = cost[(cost.family == "itemknn") & (cost.reranker == "none")].iloc[0]
-    als = cost[(cost.family == "als") & (cost.reranker == "none")].iloc[0]
-    n = row.n_requests
-    left = knn.cpu_once + n * knn.cpu_per_request
-    right = als.cpu_once + n * als.cpu_per_request
-    check("both families cost the same at the crossover",
-          abs(left - right) / left < 0.02, f"{left:.2f} vs {right:.2f} CPU-seconds")
-    check("ItemKNN is cheaper below and dearer above",
-          (knn.cpu_once < als.cpu_once) and (knn.cpu_per_request > als.cpu_per_request),
-          f"train {knn.cpu_once:.3f} vs {als.cpu_once:.3f}; "
-          f"serve {knn.cpu_per_request:.2e} vs {als.cpu_per_request:.2e}")
+    stable = [r for r in results if r[7]]
+    check("the break-even method yields tight intervals on most pairs",
+          len(stable) >= 10 and max(r[6] for r in stable) < MAX_CI_RATIO,
+          f"{len(stable)} pairs stable under crossing>=90% and CI ratio<10x; "
+          f"widest surviving interval {max(r[6] for r in stable):.1f}x")
 
-    # ----------------------------------------------------------- claim 2: reranking
-    section("CLAIM 2 -- RERANKING COST")
-    rr = ok[ok.reranker != "none"].copy()
-    rr["serving"] = rr[["cpu_retrieve_score", "cpu_retrieve_select", "cpu_rerank"]].sum(axis=1)
-    rr["share"] = rr.cpu_rerank / rr.serving
-    rr["mult"] = rr.serving / (rr.serving - rr.cpu_rerank)
-    g = rr.groupby(["dataset", "family"]).agg(share=("share", "median"), mult=("mult", "median"))
-    check("reranker is 81-98 % of per-request cost",
-          0.80 <= g.share.min() and g.share.max() <= 0.99,
-          f"{g.share.min():.1%} - {g.share.max():.1%} over {len(g)} configurations")
-    check("serving multiplier 5.3x - 43.8x",
-          abs(g.mult.min() - 5.3) < 0.2 and abs(g.mult.max() - 43.8) < 0.3,
-          f"x{g.mult.min():.1f} - x{g.mult.max():.1f}")
-    pop_ml = g.loc[("ml100k", "popularity")]
-    check("popularity on ml100k pays 24x its serving cost",
-          abs(pop_ml.mult - 24.0) < 0.5, f"x{pop_ml.mult:.1f}")
-    check("the share falls as retrieval gets more expensive",
-          g.loc[("ml100k", "gru4rec")].share < g.loc[("ml100k", "popularity")].share,
-          f"gru4rec {g.loc[('ml100k', 'gru4rec')].share:.1%} < "
-          f"popularity {g.loc[('ml100k', 'popularity')].share:.1%}")
+    headline = [r for r in results if {r[0], r[1]} == {"itemknn", "als"}]
+    if headline:
+        a, b, n, lo, hi, frac, ratio, ok = headline[0]
+        check("the ItemKNN-vs-ALS headline is NOT stably reportable",
+              not ok, f"N={n:,.0f} CI[{lo:,.0f}, {hi:,.0f}] = {ratio:.0f}x span, "
+                      f"{frac:.1%} crossing -> stable={ok}")
 
-    # Reranking must actually improve fairness, or the cost buys nothing.
-    plain = ok[(ok.dataset == "ml100k") & (ok.reranker == "none")].exposure_parity.median()
-    reranked = ok[(ok.dataset == "ml100k") & (ok.reranker != "none")].exposure_parity.median()
-    check("reranking improves exposure parity (lower is better)",
-          reranked < plain, f"{plain:.4f} -> {reranked:.4f}")
+        # The mechanism, from the per-repeat costs rather than from the bootstrap.
+        (oa, sa), (ob, sb) = lines["itemknn"], lines["als"]
+        denominators = sa - sb
+        check("the denominator changes sign across repeats",
+              (denominators > 0).any() and (denominators <= 0).any(),
+              f"serve difference per repeat: {[f'{d:+.2e}' for d in denominators]}")
+        check("the numerator is stable while the denominator is not",
+              float(np.ptp(ob - oa) / np.median(ob - oa)) < 0.15,
+              f"numerator spread {float(np.ptp(ob - oa) / np.median(ob - oa)):.1%}, "
+              f"denominator spans {denominators.min():+.2e} to {denominators.max():+.2e}")
 
-    # ------------------------------------------------------------- claim 3: validity
-    section("CLAIM 3 -- ENERGY VALIDITY")
-    graded = pd.read_csv(ROOT / "results" / "validity" / "graded_load.csv")
-    check("utilisation reads 0.0 % at every load, including 8 workers",
-          (graded["codecarbon.cpu_util_pct"] == 0).all(),
-          f"{list(graded['codecarbon.cpu_util_pct'])}")
-    check("RAM power is exactly 10.000 W at every load",
-          (graded["codecarbon.ram_watts"] == 10.0).all(),
-          f"{sorted(set(graded['codecarbon.ram_watts']))}")
-    watts = graded["codecarbon.cpu_watts"]
-    check("CPU power moves only 1.11x across the full span",
-          abs(watts.max() / watts.min() - 1.11) < 0.02,
-          f"{watts.min():.3f} W -> {watts.max():.3f} W = {watts.max() / watts.min():.2f}x")
-    total = graded["codecarbon.total_kwh"]
-    check("the fully loaded run reports less energy than idle",
-          total.iloc[-1] < total.iloc[0],
-          f"{total.iloc[-1]:.3e} < {total.iloc[0]:.3e} kWh")
-    check("the load really was applied (8 workers x 20 s)",
-          graded.expected_core_seconds.max() >= 160,
+
+def blas_confound(directory: Path) -> None:
+    section("COST-UNIT CONFOUND -- BLAS thread count")
+    readings = pd.read_csv(directory / "readings.csv")
+    r = readings[
+        (readings.dataset == "ml100k")
+        & (readings.reranker == "none")
+        & (readings.stage == "retrieve_score")
+    ]
+    util = {fam: g.cpu_utilisation.to_numpy(float) for fam, g in r.groupby("family")}
+
+    check("ALS serving utilisation varies across repeats of identical work",
+          "als" in util and float(np.ptp(util["als"])) > 0.5,
+          f"als utilisation {[f'{v:.2f}' for v in util.get('als', [])]}")
+    check("ItemKNN serving utilisation does not",
+          "itemknn" in util and float(np.ptp(util["itemknn"])) < 0.2,
+          f"itemknn utilisation {[f'{v:.2f}' for v in util.get('itemknn', [])]}")
+    check("so CPU-seconds charges the same work differently between families",
+          "als" in util and float(util["als"].max() / util["als"].min()) > 1.5,
+          f"als utilisation ratio {float(util['als'].max() / util['als'].min()):.2f}x",
+          evidence="ARITH")
+
+
+def reranking(runs: pd.DataFrame) -> None:
+    section("RERANKING COST AND WHAT IT BUYS")
+    stages = ["cpu_retrieve_score", "cpu_retrieve_select", "cpu_rerank"]
+    r = runs[runs.reranker != "none"].copy()
+    r["share"] = r.cpu_rerank / r[stages].sum(axis=1)
+    shares = r.groupby(["dataset", "family"]).share.median()
+    check("the reranker is 80-98 % of per-request cost",
+          0.80 <= shares.min() and shares.max() <= 0.98,
+          f"{shares.min():.1%} - {shares.max():.1%} over {len(shares)} configurations")
+
+    # What it bought, per configuration, from the run rows.
+    bought = {}
+    for (cat, fam), g in runs.groupby(["dataset", "family"]):
+        before = g[g.reranker == "none"].exposure_parity.median()
+        after = g[g.reranker != "none"].exposure_parity.median()
+        if pd.notna(before) and pd.notna(after):
+            bought[(cat, fam)] = (before, after)
+    nothing = [k for k, (b, a) in bought.items() if a >= b]
+    check("reranking does not improve parity on every configuration",
+          len(nothing) > 0,
+          f"{len(nothing)} of {len(bought)} bought nothing: {nothing}")
+
+
+def parity_degeneracy(directory: Path) -> None:
+    section("PARITY -- the corrected metric, per user")
+    per_user = pd.read_csv(directory / "per_user.csv")
+    for catalogue in ("luxury_beauty", "digital_music"):
+        before = per_user[
+            (per_user.dataset == catalogue)
+            & (per_user.family == "popularity")
+            & (per_user.reranker == "none")
+            & (per_user.repeat == 0)
+        ]
+        after = per_user[
+            (per_user.dataset == catalogue)
+            & (per_user.family == "popularity")
+            & (per_user.reranker != "none")
+            & (per_user.repeat == 0)
+        ]
+        if before.empty or after.empty:
+            continue
+        merged = before.merge(after, on="user_row", suffixes=("_a", "_b"))
+        changed = int((merged.exposure_parity_b != merged.exposure_parity_a).sum())
+        check(f"{catalogue}/popularity: reranking changed parity for no user",
+              changed == 0,
+              f"{changed} of {len(merged)} users changed; "
+              f"{merged.exposure_parity_a.iloc[0]:.4f} -> {merged.exposure_parity_b.iloc[0]:.4f}")
+
+
+def depth(directory: Path) -> None:
+    section("RETRIEVAL DEPTH")
+    if not (directory / "runs.csv").exists():
+        print("  absent")
+        return
+    from scipy import stats
+
+    runs = load(directory)
+    r = runs[runs.reranker != "none"].copy()
+    stages = ["cpu_retrieve_score", "cpu_retrieve_select", "cpu_rerank"]
+    r["share"] = r.cpu_rerank / r[stages].sum(axis=1)
+
+    per_depth = r.groupby("n_candidates").agg(
+        rerank=("cpu_rerank", "median"), share=("share", "median"),
+        hit=("candidate_hit_rate", "median"), parity=("exposure_parity", "median"),
+    )
+    slope = float(np.polyfit(np.log(per_depth.index), np.log(per_depth.rerank), 1)[0])
+    check("rerank cost scales superlinearly in depth",
+          1.15 < slope < 1.35, f"O(n^{slope:.2f})")
+    check("cost rises 28-35x over the depth range",
+          28 <= per_depth.rerank.iloc[-1] / per_depth.rerank.iloc[0] <= 35,
+          f"{per_depth.rerank.iloc[-1] / per_depth.rerank.iloc[0]:.1f}x", evidence="ARITH")
+    check("exposure parity is flat across depth",
+          float(per_depth.parity.max() - per_depth.parity.min()) < 0.01,
+          f"{per_depth.parity.min():.4f} - {per_depth.parity.max():.4f}")
+
+    rho, p = stats.spearmanr(r.n_candidates, r.ndcg)
+    check("accuracy does NOT decline monotonically with depth (claim retracted)",
+          p > 0.05, f"Spearman rho={rho:+.3f} p={p:.2f}")
+    check("depth is confounded with the recall ceiling",
+          float(per_depth.hit.iloc[-1] - per_depth.hit.iloc[0]) > 0.5,
+          f"candidate_hit_rate {per_depth.hit.iloc[0]:.3f} -> {per_depth.hit.iloc[-1]:.3f}")
+
+    capped = runs[runs.n_candidates != runs.n_candidates_requested]
+    check("capped runs record the depth they actually ran at",
+          len(capped) == 0 or (capped.n_candidates < capped.n_candidates_requested).all(),
+          f"{len(capped)} capped rows"
+          + (f", e.g. {int(capped.n_candidates_requested.iloc[0])} -> "
+             f"{int(capped.n_candidates.iloc[0])}" if len(capped) else ""))
+
+
+def rerankers(directory: Path) -> None:
+    section("QUANTUM-INSPIRED RERANKERS vs THE CORRECT CLASSICAL BASELINE")
+    if not (directory / "runs.csv").exists():
+        print("  absent")
+        return
+    runs = load(directory)
+
+    per_family = runs.groupby(["family", "reranker"]).agg(
+        cost=("cpu_per_request", "median"), parity=("exposure_parity", "median"),
+        ndcg_mean=("ndcg", "mean"), ndcg_median=("ndcg", "median"),
+    )
+    floor = per_family.xs("balanced_quota", level="reranker").parity
+    check("balanced_quota reaches the parity floor on every family",
+          bool((np.abs(floor - 0.2) < 1e-9).all()),
+          f"{[round(v, 4) for v in floor]}")
+    for annealer in ("qubo_feasible", "qubo_tabu"):
+        got = per_family.xs(annealer, level="reranker").parity
+        check(f"{annealer} reaches the same floor and no better",
+              bool((np.abs(got - floor) < 1e-9).all()),
+              f"{[round(v, 4) for v in got]}")
+
+    cost_ratio = (
+        per_family.xs("qubo_feasible", level="reranker").cost
+        / per_family.xs("balanced_quota", level="reranker").cost
+    )
+    check("qubo_feasible costs ~290x balanced_quota for that identical floor",
+          bool(((cost_ratio > 200) & (cost_ratio < 400)).all()),
+          f"{[round(v) for v in cost_ratio]}x by family", evidence="ARITH")
+
+    # Dominance is scoped to balanced_quota, and checked under both summaries because
+    # the two disagree when pooled across families.
+    qf = per_family.xs("qubo_feasible", level="reranker")
+    bq = per_family.xs("balanced_quota", level="reranker")
+    check("qubo_feasible is worse than balanced_quota on accuracy, both statistics",
+          bool((qf.ndcg_mean < bq.ndcg_mean).all() and (qf.ndcg_median < bq.ndcg_median).all()),
+          f"mean {[round(v, 4) for v in qf.ndcg_mean]} vs {[round(v, 4) for v in bq.ndcg_mean]}")
+
+    # And explicitly NOT dominated by no-reranking -- the claim that would overreach.
+    none = per_family.xs("none", level="reranker")
+    worse = (qf.ndcg_mean < none.ndcg_mean)
+    check("qubo_feasible is NOT strictly dominated by no-reranking",
+          not bool(worse.all()),
+          f"worse than no-reranking on {int(worse.sum())} of {len(worse)} families "
+          f"({list(worse[worse].index)}), better on {list(worse[~worse].index)}")
+
+
+def energy(directory: Path) -> None:
+    """Checks on the graded-load result reported in §5.
+
+    Two checks that used to live here have been **removed rather than relaxed**, because
+    re-running the graded load at a clean revision refuted both. They asserted that
+    utilisation "reads 0.0 % at every load" and that "the fully loaded run reports less
+    energy than idle"; on ``results/validity_v2`` utilisation reads 5 % at two workers and
+    the loaded run reports *more* energy than idle. They were passing against
+    ``results/validity``, a superseded directory taken with dirty code -- so a stale
+    default here was quietly certifying two claims the report has withdrawn. The default
+    now points at the current directory, which is the only way this file can be trusted.
+
+    What replaces them is the claim §5 actually rests on: the axis does not move enough to
+    rank anything, because the channel that dominates the total is a compile-time constant.
+    """
+    section("ENERGY-AXIS VALIDITY")
+    graded = pd.read_csv(directory / "graded_load.csv")
+
+    check("RAM power is a constant",
+          float(np.ptp(graded["codecarbon.ram_watts"])) == 0.0,
+          f"{sorted(set(graded['codecarbon.ram_watts']))} W")
+
+    ram_share = graded["codecarbon.ram_kwh"] / graded["codecarbon.total_kwh"]
+    check("the constant RAM channel dominates the reported total",
+          bool((ram_share > 0.75).all()),
+          f"{ram_share.min():.1%} to {ram_share.max():.1%} of total energy")
+
+    util = graded["codecarbon.cpu_util_pct"]
+    check("utilisation reads zero under the heaviest load",
+          float(util.iloc[-1]) == 0.0,
+          f"{list(util)} % across {list(graded.workers)} workers")
+
+    # Mean power over each window, not the single instantaneous value codecarbon reports
+    # last: cpu_watts is a final sample and understates the swing.
+    mean_cpu = graded["codecarbon.cpu_kwh"] / graded.wall_seconds * 3.6e6
+    cpu_swing = float(mean_cpu.iloc[-1] / mean_cpu.iloc[0])
+    check("the CPU channel responds, but far less than the true dynamic range",
+          1.2 < cpu_swing < 3.0,
+          f"{mean_cpu.iloc[0]:.3f} -> {mean_cpu.iloc[-1]:.3f} W = {cpu_swing:.2f}x "
+          f"(a 15 W part swings ~10x)")
+
+    mean_total = graded["codecarbon.total_kwh"] / graded.wall_seconds * 3.6e6
+    total_swing = float(mean_total.iloc[-1] / mean_total.iloc[0])
+    check("the reported energy axis barely moves from idle to saturated",
+          total_swing < 1.15,
+          f"{mean_total.iloc[0]:.3f} -> {mean_total.iloc[-1]:.3f} W = {total_swing:.2f}x, "
+          f"against workloads spanning six orders of magnitude")
+
+    check("the load was really applied",
+          float(graded.expected_core_seconds.max()) >= 100,
           f"{graded.expected_core_seconds.max():.0f} core-seconds requested")
 
-    verdict = json.loads((ROOT / "results" / "validity" / "verdict.json").read_text("utf-8"))
-    agreement = verdict["sweep_agreement"]
-    check("the rescaled-clock hypothesis is refuted (R^2 near 0.55, not 1.0)",
-          "0.55" in agreement["vs_cpu_seconds"], agreement["vs_cpu_seconds"])
-    check("144 real readings behind the agreement test", agreement["n"] == 144,
-          f"n = {agreement['n']}")
 
-    # ------------------------------------------------------------ claim 4: accuracy
-    section("CLAIM 4 -- ACCURACY, PAIRED")
-    paired = pd.read_csv(main_dir / "tables" / "paired.csv")
-    plain_ndcg = paired[(paired.metric == "ndcg") & (~paired.config.str.contains("+", regex=False))]
-    winners = plain_ndcg[plain_ndcg.significant]
-    beat_pop = set(winners.dataset)
-    check("ItemKNN beats popularity on 4 of 5 catalogues",
-          len(set(winners[winners.config == "itemknn"].dataset)) == 4,
-          ", ".join(sorted(set(winners[winners.config == "itemknn"].dataset))))
-    check("on ml100k only gru4rec beats popularity",
-          set(winners[winners.dataset == "ml100k"].config) == {"gru4rec"},
-          str(set(winners[winners.dataset == "ml100k"].config)))
-    check("every catalogue has at least one significant winner", len(beat_pop) == 5,
-          ", ".join(sorted(beat_pop)))
-    check("the reference really is popularity", set(paired.reference) == {"popularity"},
-          str(set(paired.reference)))
+def retraining(runs: pd.DataFrame) -> None:
+    section("RETRAINING CADENCE")
+    ml = runs[(runs.dataset == "ml100k") & (runs.reranker == "none")]
+    per_family = ml.groupby("family").agg(once=("cpu_once", "median"),
+                                          serve=("cpu_per_request", "median"))
+    n_requests, interval = 100_000, 100
+    events = 1 + n_requests // interval
+    for family in per_family.index:
+        never = per_family.once[family] + n_requests * per_family.serve[family]
+        often = events * per_family.once[family] + n_requests * per_family.serve[family]
+        if family == "gru4rec":
+            check("gru4rec total cost moves ~800x with cadence alone",
+                  750 < often / never < 850,
+                  f"{never:,.0f} -> {often:,.0f} CPU-s = {often / never:.0f}x",
+                  evidence="ARITH")
+    def multiplier(family: str) -> float:
+        once, serve = per_family.once[family], per_family.serve[family]
+        return (events * once + n_requests * serve) / (once + n_requests * serve)
 
-    gru = cost[(cost.family == "gru4rec") & (cost.reranker == "none")].iloc[0]
-    pop = cost[(cost.family == "popularity") & (cost.reranker == "none")].iloc[0]
-    check("gru4rec costs 2.7 million times popularity's training",
-          abs(gru.cpu_train / pop.cpu_train / 1e6 - 2.7) < 0.2,
-          f"{gru.cpu_train:.1f} / {pop.cpu_train:.6f} = {gru.cpu_train / pop.cpu_train:.2e}")
+    spread = [multiplier(f) for f in per_family.index]
+    check("the cadence effect is not uniform across families",
+          max(spread) / min(spread) > 100,
+          ", ".join(f"{f} {multiplier(f):.0f}x" for f in per_family.index),
+          evidence="ARITH")
 
-    # ItemKNN and MultVAE dominated on ml100k: costlier than popularity, less accurate.
-    at = lambda r, n=100_000: r.cpu_once + n * r.cpu_per_request  # noqa: E731
-    for family in ("itemknn", "multvae"):
-        row_f = cost[(cost.family == family) & (cost.reranker == "none")].iloc[0]
-        check(f"{family} is dominated by popularity on ml100k",
-              at(row_f) > at(pop) and row_f.ndcg < pop.ndcg,
-              f"cost {at(row_f):.2f} vs {at(pop):.2f}, ndcg {row_f.ndcg:.4f} vs {pop.ndcg:.4f}")
 
-    # --------------------------------------------------------------- claim 5: depth
-    section("CLAIM 5 -- RETRIEVAL DEPTH")
-    depth = pd.read_csv(ROOT / "results" / "depth" / "runs.csv")
-    depth = depth[(depth.status == "ok") & depth.trustworthy]
-    dr = depth[depth.reranker != "none"].copy()
-    dr["serving"] = dr[["cpu_retrieve_score", "cpu_retrieve_select", "cpu_rerank"]].sum(axis=1)
-    dr["share"] = dr.cpu_rerank / dr.serving
-    by = dr.groupby(["family", "n_candidates"])
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--results", type=Path, default=ROOT / "results" / "main_v2")
+    parser.add_argument("--depth", type=Path, default=ROOT / "results" / "depth_v2")
+    parser.add_argument("--rerankers", type=Path, default=ROOT / "results" / "rerankers_v2")
+    # results/validity is superseded (dirty code, older companion). Defaulting to it made
+    # this verifier certify two claims the report has since withdrawn -- see energy().
+    parser.add_argument("--validity", type=Path, default=ROOT / "results" / "validity_v2")
+    args = parser.parse_args()
 
-    check("depth varies over a 16x range", dr.n_candidates.max() / dr.n_candidates.min() == 16,
-          f"{sorted(dr.n_candidates.unique())}")
-    shares = by.share.median()
-    check("share climbs from ~76 % at depth 50 to ~99 % at depth 800",
-          abs(shares.min() - 0.759) < 0.01 and abs(shares.max() - 0.991) < 0.01,
-          f"{shares.min():.1%} -> {shares.max():.1%}")
+    runs = load(args.results)
+    provenance(args.results, runs)
+    breakeven(runs)
+    blas_confound(args.results)
+    reranking(runs)
+    parity_degeneracy(args.results)
+    retraining(runs)
+    depth(args.depth)
+    rerankers(args.rerankers)
+    energy(args.validity)
 
-    costs = by.cpu_rerank.median()
-    ratio = costs[("itemknn", 800)] / costs[("itemknn", 50)]
-    check("rerank cost rises ~35x over the range", 30 < ratio < 40, f"{ratio:.0f}x")
-    for family in ("als", "itemknn", "popularity"):
-        sub = costs[family]
-        slope = np.polyfit(np.log(sub.index), np.log(sub.to_numpy()), 1)[0]
-        check(f"{family} rerank cost scales O(n^1.2-1.3)", 1.15 < slope < 1.32,
-              f"O(n^{slope:.2f})")
-
-    parity = dr.groupby("n_candidates").exposure_parity.median()
-    check("exposure parity is flat across depth (no fairness benefit)",
-          parity.max() - parity.min() < 0.005,
-          f"{parity.min():.4f} - {parity.max():.4f}, spread {parity.max() - parity.min():.4f}")
-    ndcg = dr.groupby("n_candidates").ndcg.median()
-    check("accuracy falls with depth", ndcg.iloc[-1] < ndcg.iloc[0],
-          f"{ndcg.iloc[0]:.4f} at depth {ndcg.index[0]} -> "
-          f"{ndcg.iloc[-1]:.4f} at depth {ndcg.index[-1]}")
-
-    # ---------------------------------------------------------- claim 6: retraining
-    section("CLAIM 6 -- RETRAINING CADENCE")
-    retrain = pd.read_csv(main_dir / "tables" / "ml100k.retraining.csv")
-    never = retrain[retrain.retrain_every == "never"].iloc[0]
-    often = retrain[retrain.retrain_every == "100"].iloc[0]
-    check("gru4rec total cost moves 791x with cadence alone",
-          abs(often["cost.gru4rec"] / never["cost.gru4rec"] - 791) < 5,
-          f"{never['cost.gru4rec']:.0f} -> {often['cost.gru4rec']:.0f} CPU-seconds "
-          f"= {often['cost.gru4rec'] / never['cost.gru4rec']:.0f}x")
-    order_never = never["cost.als"] < never["cost.multvae"]
-    order_often = often["cost.als"] < often["cost.multvae"]
-    check("ALS and MultVAE swap order as retraining gets frequent",
-          order_never != order_often,
-          f"never: als {'<' if order_never else '>'} multvae; "
-          f"every 100: als {'<' if order_often else '>'} multvae")
-
-    # ------------------------------------------------ claim 7: quantum-inspired cost
-    section("CLAIM 7 -- QUANTUM-INSPIRED RERANKER COST")
-    rerankers_dir = ROOT / "results" / "rerankers"
-    if not (rerankers_dir / "runs.csv").exists():
-        print("  results/rerankers absent -- section 10 cannot be checked")
-    else:
-        rr_runs = pd.read_csv(rerankers_dir / "runs.csv")
-        rr_ok = rr_runs[(rr_runs.status == "ok") & rr_runs.trustworthy]
-        check("54 runs, all trustworthy", len(rr_runs) == 54 and len(rr_ok) == 54,
-              f"{len(rr_ok)} of {len(rr_runs)}")
-
-        per_user = pd.read_csv(rerankers_dir / "per_user.csv")
-        dupes = per_user.groupby(["family", "reranker", "repeat"]).user_row.apply(
-            lambda column: int(column.duplicated().sum())
-        ).sum()
-        check("no duplicated users in per_user.csv", dupes == 0 and len(per_user) == 5400,
-              f"{len(per_user)} rows, {dupes} duplicates")
-
-        table = pd.read_csv(rerankers_dir / "tables" / "ml100k.rerankers.csv")
-        qubo = table[table.reranker.str.startswith("qubo")]
-        check("qubo rerankers cost 1,200-2,300x the cheapest",
-              1200 <= qubo.cost_vs_cheapest.min() and qubo.cost_vs_cheapest.max() <= 2300,
-              f"{qubo.cost_vs_cheapest.min():.0f}x - {qubo.cost_vs_cheapest.max():.0f}x")
-        check("qubo reranking is 99.9 % of per-request cost",
-              qubo.rerank_share.min() > 0.999,
-              f"{qubo.rerank_share.min():.4%} - {qubo.rerank_share.max():.4%}")
-
-        pivot = table.pivot(index="family", columns="reranker",
-                            values="cpu_rerank_per_request")
-        ratio = (pivot.qubo_feasible / pivot.quota_mmr)
-        check("qubo_feasible costs 237-273x the fairness-aware classical baseline",
-              235 <= ratio.min() and ratio.max() <= 275,
-              f"{ratio.min():.0f}x - {ratio.max():.0f}x")
-
-        # 0.200 is the achievable optimum, not a configured target: with k=10 and four
-        # groups the per-group target is 2.5, which no integer allocation reaches, and
-        # (3,3,2,2) is the best possible. Enumerated rather than asserted.
-        import itertools
-
-        from green_rerank.companion import ensure_importable
-
-        ensure_importable()
-        from qubo_rerank.metrics import exposure_parity
-
-        k, n_groups, pool_size = 10, 4, 100
-        pool = np.array([g for g in range(n_groups) for _ in range(pool_size // n_groups)])
-        floor = min(
-            exposure_parity(
-                pool,
-                [i for g, c in enumerate(alloc) for i in np.flatnonzero(pool == g)[:c]],
-            )
-            for alloc in itertools.product(range(k + 1), repeat=n_groups)
-            if sum(alloc) == k
-        )
-        check("0.200 is the best exposure parity any list can achieve here",
-              abs(floor - 0.2) < 1e-9, f"enumerated minimum {floor:.4f}")
-
-        parity = table.groupby("reranker").exposure_parity.median()
-        check("both annealers achieve that optimum",
-              abs(parity["qubo_feasible"] - floor) < 1e-9
-              and abs(parity["qubo_tabu"] - floor) < 1e-9,
-              f"feasible {parity['qubo_feasible']:.4f}, tabu {parity['qubo_tabu']:.4f}")
-        check("no classical reranker reaches it",
-              all(parity[name] > floor + 1e-9 for name in ("quota_mmr", "mmr", "greedy_topk")),
-              f"quota_mmr {parity['quota_mmr']:.3f}, mmr {parity['mmr']:.3f}, "
-              f"greedy_topk {parity['greedy_topk']:.3f}")
-
-        tabu = table[table.reranker == "qubo_tabu"].cpu_rerank_per_request
-        check("qubo_tabu's cost is flat across families (wall-clock bounded)",
-              (tabu.max() - tabu.min()) / tabu.median() < 0.02,
-              f"{tabu.min():.4f} - {tabu.max():.4f} CPU-s, spread "
-              f"{(tabu.max() - tabu.min()) / tabu.median():.2%}")
-
-        paired_path = rerankers_dir / "tables" / "paired.csv"
-        if paired_path.exists():
-            paired = pd.read_csv(paired_path)
-            accuracy = paired[paired.metric.isin(["ndcg", "recall"])]
-            check("no reranker is distinguishable from another on accuracy",
-                  not accuracy.significant.any(),
-                  f"{int(accuracy.significant.sum())} of {len(accuracy)} significant")
-            # Only comparisons against a *different* reranker. The same reranker on
-            # another retrieval family should not differ on parity, and requiring it to
-            # would be asserting that the retrieval model drives fairness -- which the
-            # data says it does not.
-            fairness = paired[
-                (paired.metric == "exposure_parity")
-                & (~paired.config.str.endswith("quota_mmr"))
-            ]
-            check("every different-reranker parity comparison is significant",
-                  fairness.significant.all(),
-                  f"{int(fairness.significant.sum())} of {len(fairness)} significant")
-
-    # -------------------------------------------------------------------- summary
     section("SUMMARY")
     print(f"  {len(PASSED)} claims verified, {len(FAILED)} failed")
+    print("  every check recomputed from runs.csv / readings.csv / per_user.csv /")
+    print("  graded_load.csv -- no check reads a table written by analyse.py")
     for claim in FAILED:
         print(f"    FAILED: {claim}")
     return 1 if FAILED else 0

@@ -1,0 +1,91 @@
+{
+  "graded_load": {
+    "responded": true,
+    "channels": {
+      "codecarbon.cpu_kwh": {
+        "usable": true,
+        "cumulative": true,
+        "unit": "per second",
+        "idle": 4.4612003396772184e-07,
+        "loaded": 6.061547849023996e-07,
+        "dynamic_range": 1.451773351532266,
+        "monotone": false,
+        "inverted": false,
+        "constant": false
+      },
+      "codecarbon.ram_kwh": {
+        "usable": true,
+        "cumulative": true,
+        "unit": "per second",
+        "idle": 2.822438351036251e-06,
+        "loaded": 2.7778138728189155e-06,
+        "dynamic_range": 1.0160697473666847,
+        "monotone": false,
+        "inverted": true,
+        "constant": false
+      },
+      "codecarbon.gpu_kwh": {
+        "usable": false
+      },
+      "codecarbon.total_kwh": {
+        "usable": true,
+        "cumulative": true,
+        "unit": "per second",
+        "idle": 3.2685583850039726e-06,
+        "loaded": 3.3839686577213157e-06,
+        "dynamic_range": 1.0590366755900649,
+        "monotone": false,
+        "inverted": false,
+        "constant": false
+      },
+      "codecarbon.cpu_watts": {
+        "usable": true,
+        "cumulative": false,
+        "unit": "as reported",
+        "idle": 1.5402320491071428,
+        "loaded": 1.6497385925357146,
+        "dynamic_range": 1.081342684916252,
+        "monotone": false,
+        "inverted": false,
+        "constant": false
+      },
+      "codecarbon.ram_watts": {
+        "usable": true,
+        "cumulative": false,
+        "unit": "as reported",
+        "idle": 10.0,
+        "loaded": 10.0,
+        "dynamic_range": 1.0,
+        "monotone": true,
+        "inverted": false,
+        "constant": true
+      },
+      "codecarbon.co2_kg": {
+        "usable": true,
+        "cumulative": true,
+        "unit": "per second",
+        "idle": 1.4401529728998303e-06,
+        "loaded": 1.4910036623412737e-06,
+        "dynamic_range": 1.059036675590065,
+        "monotone": false,
+        "inverted": false,
+        "constant": false
+      },
+      "codecarbon.cpu_util_pct": {
+        "usable": true,
+        "cumulative": false,
+        "unit": "as reported",
+        "idle": 0.0,
+        "loaded": 0.0,
+        "dynamic_range": Infinity,
+        "monotone": false,
+        "inverted": false,
+        "constant": false
+      }
+    },
+    "constant_channels": [
+      "codecarbon.ram_watts"
+    ],
+    "reason": ""
+  }
+}

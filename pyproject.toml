@@ -92,6 +92,12 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["E501"]
+# check_report.py reproduces the report's own strings character-for-character in order to
+# diff against them, so it must contain the en dashes, multiplication signs, unicode minuses
+# and Greek letters the report uses. "Did you mean a hyphen?" is exactly wrong here: a
+# hyphen would make every comparison fail. Ambiguity is the requirement, not a defect.
+"experiments/check_report.py" = ["RUF001", "RUF003"]
+"tests/test_check_report.py" = ["E501", "RUF001", "RUF003"]
 
 [tool.coverage.run]
 source = ["green_rerank", "experiments"]

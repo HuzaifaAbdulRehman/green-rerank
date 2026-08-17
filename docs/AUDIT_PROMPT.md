@@ -44,10 +44,14 @@ numbers yourself from `readings.csv`** rather than checking `runs.csv` against t
 the derivation is exactly where an error would live and reading only the derived file
 would step over it.
 
-There is a script, `experiments/verify_claims.py`, that claims to verify 43 claims.
+There is a script, `experiments/verify_claims.py`, that recomputes ~35 claims from the
+raw measurement records.
 **Do not treat its passing as evidence.** It was written by the same author as the code it
-checks and could be tautological, could test weaker statements than the report makes, or
-could omit the claims that are hardest to support. Read it critically and ask what it
+checks and could test weaker statements than the report makes, or omit the claims that are
+hardest to support. An earlier version was substantially tautological -- it read the
+tables `analyse.py` wrote and confirmed they said what the report said -- and was rebuilt
+to recompute from `readings.csv` / `per_user.csv` instead. Check that the rebuild is real:
+any check that still consumes `tables/` is verifying the analysis against itself. Read it critically and ask what it
 does *not* check. If you find a claim in the report with no corresponding check, that gap
 is itself a finding.
 

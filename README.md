@@ -48,63 +48,105 @@ hardware the answer is no, and that is a result rather than an obstacle.
 ## What it found
 
 170 measured runs across five catalogues (147 to 11,268 items), five model families and
-two reranking conditions, five repeats each. Zero failures, every row passing the trust
-check on an idle mains-powered machine, no stage falling below the clock quantum.
-Full write-up in [`docs/report.md`](docs/report.md).
+two reranking conditions, five repeats each, plus 90 runs on retrieval depth and 63 on
+rerankers. Zero failures, every row passing the trust check on an idle mains-powered
+machine, no stage falling below the clock quantum. Full write-up in
+[`docs/report.md`](docs/report.md).
 
-**A break-even exists and is measurable.** ItemKNN against ALS on MovieLens 100K crosses
-at **N = 112,730 requests** (95 % CI 51,128 – 180,720; 95 % of bootstrap replicates
-cross). Below that the neighbourhood model is the cheaper deployment, above it the factor
-model. Only 13 of 45 configuration pairs cross stably enough to report — that denominator
-is part of the result.
+An external audit of the first version of this study found six code defects. Everything
+below is regenerated against the corrected code, from `results/main_v2/`,
+`results/depth_v2/` and `results/rerankers_v2/`. **Three earlier results directories are
+superseded and must not be cited**; `results/README.md` records what was wrong with each.
+Several claims are weaker than they were and two are retracted — marked as such, because a
+report whose confidence never moves is not evidence of anything.
 
-**Fairness reranking is 81–98 % of per-request cost**, multiplying serving cost 5.3× to
-43.8×. A deployer adding exposure fairness to a popularity baseline is not paying a
-margin, they are paying **24 times** their serving cost. As far as the literature search
-found, this is the first published figure for what a fairness reranker costs as a share
-of a pipeline.
+**The break-even method works; the comparison this README used to lead with does not
+reproduce.** 12 of 45 configuration pairs on MovieLens 100K cross stably enough to report,
+with 95 % intervals only 1.1× to 7.8× wide. ItemKNN against ALS is **not** one of them: its
+interval spans **123×** and the sign of its denominator flips across repeats. The cause is
+that CPU-seconds counts every thread while BLAS re-picks its thread count per process, so
+ALS's serving cost varies more between repeats than it differs from ItemKNN's. **Pin
+`OMP_NUM_THREADS=1` before measuring cost.** That diagnosis is more transferable than the
+number it replaces.
 
-**Retrieve shallowly when reranking.** Going from 50 to 800 candidates costs 35× more in
-the rerank stage (cost scales O(n^1.2–1.3)), delivers **no** measurable fairness
-improvement (exposure parity flat at 0.254), and *loses* accuracy.
+**Fairness reranking is 81.6–97.6 % of per-request cost**, multiplying serving cost 5.7× to
+42.8×. A deployer adding exposure fairness to a popularity baseline on MovieLens 100K is
+not paying a margin, they are paying **24.9 times** their serving cost. As far as the
+literature search found, this is the first published figure for what a fairness reranker
+costs as a share of a pipeline.
 
-**On MovieLens 100K, almost nothing beats recommending the most popular items.** Only
-GRU4Rec beats that baseline under a paired per-user test (NDCG 42/16, p = 0.043)
-— for 451 CPU-seconds of training against popularity's 0.000167, a factor of 2.7 million.
-ItemKNN, ALS and MultVAE show no detectable difference there, and ItemKNN and MultVAE are
-*dominated*: costlier than popularity and less accurate.
+**That spend does not reliably buy fairness.** On `luxury_beauty` the most expensive
+configuration measured — 42.8× serving cost — changed exposure parity for **0 of 1,000
+paired user-records**, in either direction. On `software` a comparable multiplier did move
+parity, 1.500 → 1.000, while cutting NDCG from 0.0048 to 0.0019. The multiplier is
+reliable; the benefit is catalogue-dependent and has to be measured.
 
-But ML-100K is the **exception**, not the rule: ItemKNN beats popularity on four of the
-five catalogues. A method validated only on ML-100K — the catalogue everyone uses — can
-therefore be reported as beating a baseline it does not beat.
+**Retrieve shallowly when reranking.** Going from 50 to 800 candidates costs **31.5×** more
+in the rerank stage (O(n^1.21–1.29)) and delivers **no** measurable fairness improvement —
+parity moves 0.0075–0.0177 across the whole range. The earlier claim that accuracy *falls*
+with depth is **retracted** (ρ = −0.115, p = 0.45); the recommendation stands on cost alone.
 
-**Retraining cadence is a bigger lever than model choice.** Holding traffic fixed,
-GRU4Rec's total cost moves 791× between never retraining and retraining every 100
-requests, with accuracy unchanged.
+**On MovieLens 100K, nothing tested beats recommending the most popular items
+reproducibly.** ItemKNN, ALS and MultVAE reach significance in 0 of 5 repeats. GRU4Rec
+reaches it in **1 of 5** — for 417.9 CPU-seconds of training against popularity's 1.58e-4,
+a factor of **2.6 million**. The earlier claim that GRU4Rec beats the baseline there rested
+on a single repeat.
+
+ML-100K is the **exception**: ItemKNN beats popularity in every repeat on three of the other
+four catalogues, and in 4 of 5 repeats on the fourth. A method validated only on ML-100K —
+the catalogue everyone uses — can therefore be reported as beating a baseline it does not
+beat.
+
+**Retraining cadence is a bigger lever than model choice.** Holding traffic fixed at 100,000
+requests, GRU4Rec's total cost moves **801×** between training once and retraining every 100
+requests. What that buys was **not measured** and is no longer claimed: no model in any
+sweep was retrained on newer data, because the harness has no temporal split to retrain
+across.
+
+**A classical reranker matches the quantum-inspired ones exactly, for ~1/290th the cost.**
+`balanced_quota` — largest-remainder apportionment — reaches exposure parity 0.200, the
+optimum permitted by the integrality of list positions, on all three retrieval families,
+and ties both annealers on **900 of 900** paired user-records. This **retracts** the earlier
+claim that the annealers reached a fairness optimum classical methods could not; that claim
+was an artefact of the correct baseline being missing from the registry. What the annealers
+do still buy is list diversity — intra-list similarity 0.286–0.297 against 0.357, better on
+893 of 900 users, p < 0.001 — at 288–290× the cost of the stage that already dominates
+per-request cost.
 
 ---
 
 ## The cost unit is CPU-seconds, and that is a finding
 
-`codecarbon` **cannot see CPU load on the development machine**. Measured on codecarbon
-3.3.0 with a graded load — 0, 1, 2, 4 and 8 busy processes, 20 s each, idle machine.
-Reproduce with `python -m experiments.validity`:
+`codecarbon`'s reported energy **barely moves on the development machine**. Measured on
+codecarbon 3.3.0 with a graded load — 0, 1, 2, 4 and 8 busy processes, 20 s each, on a
+machine first confirmed idle. Reproduce with `python -m experiments.validity`:
 
 | busy workers | reported CPU power | reported utilisation | reported RAM power | total energy |
 |--------------|--------------------|----------------------|--------------------|--------------|
-| 0 | 1.500 W | 0.0 % | 10.000 W | 7.371e-05 kWh |
-| 4 | 1.521 W | 0.0 % | 10.000 W | 6.715e-05 kWh |
-| 8 | 1.660 W | 0.0 % | 10.000 W | 7.329e-05 kWh |
+| 0 | 1.540 W | 0 % | 10.000 W | 6.541e-05 kWh |
+| 2 | 1.526 W | **5 %** | 10.000 W | 6.624e-05 kWh |
+| 4 | 1.543 W | 0 % | 10.000 W | 6.744e-05 kWh |
+| 8 | 1.650 W | 0 % | 10.000 W | 7.362e-05 kWh |
 
-Utilisation reads exactly zero at every level including eight saturated cores. CPU power
-moves **1.11×** across the full span, against a true dynamic range of roughly 10× for
-this part. RAM power is exactly 10.000 W throughout — a hardcoded constant, and it
-dominates the total. The fully loaded run reports **less** total energy than idle.
+RAM power is exactly 10.000 W at every level — a hardcoded constant — and it supplies
+**82–87 %** of the reported total. The utilisation channel is unusable: 0, 0, 5, 0, 0 %
+across the five conditions, reading **zero under eight saturated cores**. The CPU channel
+does respond, weakly: mean CPU power moves 1.606 → 2.182 W, a **1.36×** swing against a
+true dynamic range of roughly 10× for a 15 W part. Because the constant channel dominates,
+mean *total* reported power moves **1.04×** between an idle machine and a saturated one —
+and the study spans workloads differing by six orders of magnitude in cost.
 
-A second test regressed reported energy on elapsed time over 144 readings from real
-workloads, expecting to find that the energy column was simply a rescaled clock. It is
-not, and the truth is worse: R² = 0.55, with the implied kWh-per-CPU-second conversion
-varying **13.7×**. Not even a constant misestimate that could be calibrated away.
+Two claims an earlier version of this section made **did not reproduce** when the test was
+re-run at a clean revision, and are withdrawn: utilisation is erratic rather than pinned at
+exactly zero, and the fully loaded run does **not** report less total energy than idle. A
+third claim, a regression showing the energy column was not even a rescaled clock, has been
+deleted because the sweep behind it cannot be regenerated — it was taken with a dirty
+working tree. The report records all three.
+
+Note that the driver's own automated verdict on this run reads *"the backend responded"*;
+the report disagrees with it and explains why — the verdict weighs channels equally instead
+of by their contribution to the total, which lets a responsive 14–18 % vouch for a constant
+82–87 %.
 
 The machine (Intel i5-8350U, 15 W TDP, Windows 10) exposes no RAPL, and WSL2 does not
 help — verified, not assumed: `/sys/class/powercap` exists but is empty and
@@ -145,10 +187,20 @@ divides; readings that could not be grown are flagged `below_quantum` rather tha
 reported.
 
 **4. Battery power changes everything except the results.** Unplugged, this laptop drops
-from ~3.6 GHz to a pinned 1.297 GHz, every timing rises ~2.8×, and every quality metric
-stays byte-identical. `preflight()` refuses to start on battery, and `ConditionsMonitor`
+from 1696 MHz to a pinned 1297 MHz, every timing rises, and every quality metric stays
+byte-identical. `preflight()` refuses to start on battery, and `ConditionsMonitor`
 samples power source and CPU frequency *during* a sweep, because a cable can come out at
 run seven of twenty and nothing in the output would show it.
+
+**The frequency channel cannot certify the absence of throttling, and no longer pretends
+to.** `psutil.cpu_freq().current` returns a policy-derived constant on this Windows laptop —
+exactly 1696.0 MHz across all 1,755 samples of the main sweep, spanning idle and eight
+saturated cores. Reading that constancy as "no throttling observed" is precisely the error
+this project condemns in codecarbon's utilisation channel, and the project committed it.
+`ConditionsMonitor.report()` now returns `throttled=None` rather than `False` when the
+channel is unresponsive, alongside `frequency_sensor_responsive=False`. What stays live is
+narrower but real: the channel *does* detect a change of power **policy**, because it reads
+1297 MHz on battery against 1696 on mains.
 
 Two further guards follow the same principle:
 
@@ -204,20 +256,41 @@ beside directly measured CPU-seconds would put two incomparable things in one co
 ```bash
 pip install -e ".[dev]"          # core
 pip install -e ".[rerank]"       # the D-Wave stack, needed for every reranker
+pip install -e ".[energy]"       # codecarbon -- required to reproduce the energy check
 pip install torch --index-url https://download.pytorch.org/whl/cpu   # neural families
 ```
+
+`[energy]` is not optional for reproducing §5. It was omitted from the documented install
+for most of this project's history, and `codecarbon` is commented out of
+`requirements.txt`, so the instructions above could not reproduce the project's own third
+claim. Verified by installing from these lines into an empty environment and running the
+experiment, rather than by reading the file.
 
 The companion checkout must be findable — `../qubo-rerank` by default, or set
 `GREEN_RERANK_COMPANION`. Datasets are located, never copied: `data/`, then
 `$GREEN_RERANK_DATA`, then the companion's `data/`.
 
 ```bash
-python -m experiments.validity                                        # the energy-axis check
-python -m experiments.sweep    --config experiments/configs/main.yaml # the measurements
-python -m experiments.analyse  --results results/main                 # cost tables, break-even
-python -m experiments.compare  --results results/main                 # paired accuracy tests
-python -m experiments.figures  --results results/main                 # plots
+python -m experiments.validity --out results/validity_v2                 # the energy-axis check
+python -m experiments.sweep    --config experiments/configs/main_v2.yaml # the measurements
+python -m experiments.analyse  --results results/main_v2                 # cost tables, break-even
+python -m experiments.compare  --results results/main_v2                 # paired accuracy tests
+python -m experiments.figures  --results results/main_v2                 # plots
+python -m experiments.verify_claims                                      # 36 assertions on the raw records
 ```
+
+**Measure cost with the thread count pinned.** Prefix the sweep with
+`OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1`. CPU-seconds counts every
+thread, so a stage whose thread count is chosen at runtime by BLAS carries that choice into
+its cost — which is what made this project's original headline break-even irreproducible.
+The committed sweeps were not run that way, and the report reports the consequence.
+
+`verify_claims` is the check that matters, and it is a *verifier*: 36 assertions, each of
+which can fail, computed from `runs.csv`, `readings.csv` and `per_user.csv` only. It never
+reads a table written by `analyse.py`, so a stale or hand-edited `tables/` directory cannot
+make it pass. `experiments/headline.py` reports the same quantities readably and is
+explicitly **not** a verifier — it contains no assertions and cannot fail. Conflating the
+two is how a reporting script comes to be trusted as a check.
 
 `validity` runs in about two minutes and needs no dataset: it applies a known graded
 load and reports what the energy backend says about it. On a machine with working power
@@ -229,19 +302,42 @@ Repeat is the outermost loop, so an interrupted sweep still leaves one complete
 observation of every cell rather than five of the first family and none of the rest.
 
 Every results directory carries a `manifest.json` recording the revision of **both**
-repositories, package versions, machine, measured clock quantum, and the preflight
-record. A dirty working tree is recorded as `abc1234-dirty`, because that is not a
-version anyone can return to and it should not look like one.
+repositories, package versions, machine, measured clock quantum, and the preflight record.
+It distinguishes `dirty` — the measured *code* differs from its revision, so the numbers
+cannot be regenerated — from `tree_dirty`, where only documentation or analysis differs,
+which does not affect the measurement. The three superseded results directories carry
+`dirty=True`, which is why they could not be repaired and had to be replaced; the three
+`_v2` sweeps carry `dirty=False` on both repositories.
 
 ---
 
 ## Testing
 
 ```bash
-pytest tests/ -m "not timing"     # ~250 tests, 88 % coverage
+pytest tests/ -m "not timing"          # 277 of 279 tests, 94 % coverage of green_rerank
 ruff check .
-python tests/mutations.py         # 29 deliberate bugs; all must be caught
+python tests/mutations.py              # 41 deliberate bugs; all must be caught
+python -m experiments.verify_claims    # 36 assertions about the data
+python -m experiments.check_report     # does the report say what the data says?
 ```
+
+**`check_report` must pass before any commit that touches `docs/report.md`.** It diffs every
+data table and thirteen prose figures in the report against freshly recomputed values, and
+exits non-zero on any difference. It exists because of one specific failure: §4.5 justified a
+threshold with a list of twelve interval widths, six of which were not in the data. The
+argument the list supported happened to survive, which is what made it dangerous — the prose
+was checked for plausibility, and it was plausible. Nothing recomputed it.
+
+The two checkers ask different questions and neither substitutes for the other:
+`verify_claims` asks *is this claim true of the data*; `check_report` asks *does the report
+say what the data says*. A number can be hand-typed into prose and be wrong while every
+assertion about the data still passes. Tables the checker deliberately skips are listed in
+its `NOT_CHECKED` with a reason, and it fails if one of those entries goes stale — a table
+that is silently uncovered reads as a table that passed.
+
+Measured, not remembered: 277 selected tests all pass, `coverage` reports **94 %** of
+`green_rerank` (76 % including the `experiments/` drivers), and `tests/mutations.py` reports
+**41 caught, 0 survived**.
 
 Tests assert invariants rather than chase coverage — the target is anything that could
 fail *silently*.
@@ -252,7 +348,15 @@ leave output looking normal, that is the distinction that matters. Each entry in
 a mistake someone could really make — a forgotten division, an inverted comparison, a
 guard removed because it looked redundant — runs the tests that ought to object, and
 reports whether they did. **Four survived the first run**, and each was this project's
-characteristic failure. All 29 are caught now.
+characteristic failure.
+
+Twelve mutations were added after the external audit, one for each defect it found, so that
+each specific regression is caught rather than merely fixed — including `balanced_quota`
+being dropped from the registry, the stochastic solvers losing their seed, `lam` not
+reaching the classical solvers, exposure parity ignoring the catalogue group count,
+`runs.csv` recording the requested depth instead of the actual one, the paired comparison
+silently keeping one repeat, and a pinned frequency sensor being allowed to certify a clean
+run.
 
 The tests that have already earned their place:
 

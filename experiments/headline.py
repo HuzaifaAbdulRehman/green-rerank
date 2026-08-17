@@ -1,5 +1,16 @@
 """Print every number the report quotes, straight from the results on disk.
 
+**This is a reporter, not a verifier. It contains no assertions and cannot fail.**
+
+The distinction matters and has been confused once already. This module's job is that a
+human transcribing the report copies numbers rather than misremembering them; it makes no
+claim about whether any of those numbers support a conclusion. Nothing here can go red, so
+a green run is not evidence of anything.
+
+Falsifiable checking lives in :mod:`experiments.verify_claims`, which recomputes each
+claim from the raw records and fails when the data stops supporting it. If you find
+yourself citing *this* file as coverage for a claim, that is the mistake.
+
 This exists because of a mistake. The energy table in section 5 was transcribed from a
 validity run that a later run then superseded, so the report quoted 1.12x and 7.459e-05
 while the committed CSV said 1.11x and 7.371e-05. Nobody would have noticed: both sets
@@ -180,9 +191,121 @@ def accuracy(directory: Path) -> None:
     print(f"\n  {len(good)} of {len(table)} comparisons reach significance")
 
 
+def energy_axis(directory: Path) -> None:
+    """Section 5 -- the graded load. Was claimed as covered and was not.
+
+    This section is the reason the tool exists: its table drifted from the data once,
+    and the drift was invisible because nothing regenerated it.
+    """
+    _rule("energy axis (section 5)")
+    path = directory / "graded_load.csv"
+    if not path.exists():
+        print(f"  {path} absent -- run experiments.validity")
+        return
+    graded = pd.read_csv(path)
+    columns = {
+        "codecarbon.cpu_watts": "CPU power",
+        "codecarbon.cpu_util_pct": "utilisation",
+        "codecarbon.ram_watts": "RAM power",
+        "codecarbon.total_kwh": "total energy",
+    }
+    print(f"  {'workers':>7}  " + "  ".join(f"{name:>13}" for name in columns.values()))
+    for _, row in graded.iterrows():
+        cells = []
+        for column in columns:
+            value = row.get(column)
+            cells.append(f"{value:>13.3e}" if column.endswith("kwh") else f"{value:>13.3f}")
+        print(f"  {int(row['workers']):>7}  " + "  ".join(cells))
+
+    watts = graded["codecarbon.cpu_watts"]
+    total = graded["codecarbon.total_kwh"]
+    print(f"\nCPU power span      {watts.max() / watts.min():.2f}x")
+    print(f"  utilisation values  {sorted(set(graded['codecarbon.cpu_util_pct']))}")
+    print(f"  RAM power values    {sorted(set(graded['codecarbon.ram_watts']))} W")
+    print(f"  loaded < idle       {total.iloc[-1] < total.iloc[0]} "
+          f"({total.iloc[-1]:.3e} vs {total.iloc[0]:.3e} kWh)")
+
+
+def depth_sensitivity_numbers(directory: Path) -> None:
+    """Section 7.6 -- including the confound the original section omitted."""
+    _rule("retrieval depth (section 7.6)")
+    if not (directory / "runs.csv").exists():
+        print(f"  {directory} absent")
+        return
+    runs = load_runs(directory)
+    reranked = runs[runs.reranker != "none"].copy()
+    labels = [s.label for s in PER_REQUEST_STAGES]
+    reranked["share"] = reranked.cpu_rerank / reranked[[f"cpu_{x}" for x in labels]].sum(axis=1)
+
+    table = reranked.groupby("n_candidates").agg(
+        rerank=("cpu_rerank", "median"),
+        share=("share", "median"),
+        hit_rate=("candidate_hit_rate", "median"),
+        parity=("exposure_parity", "median"),
+        ndcg=("ndcg", "median"),
+    )
+    print(f"  {'depth':>6} {'rerank CPU-s':>13} {'share':>8} {'hit rate':>9} "
+          f"{'parity':>8} {'NDCG':>8}")
+    for depth_value, row in table.iterrows():
+        print(f"  {int(depth_value):>6} {row.rerank:>13.4f} {row.share:>7.1%} "
+              f"{row.hit_rate:>9.3f} {row.parity:>8.4f} {row.ndcg:>8.4f}")
+
+    slope = np.polyfit(np.log(table.index), np.log(table.rerank), 1)[0]
+    print(f"\ncost scaling        O(n^{slope:.2f})")
+    print(f"  cost ratio          {table.rerank.iloc[-1] / table.rerank.iloc[0]:.1f}x")
+    print(f"  parity spread       {table.parity.max() - table.parity.min():.4f}")
+    print(f"  hit-rate confound   {table.hit_rate.iloc[0]:.3f} -> {table.hit_rate.iloc[-1]:.3f}"
+          "   (depth and the recall ceiling are collinear)")
+
+    capped = runs[runs.n_candidates != runs.n_candidates_requested]
+    if len(capped):
+        print(f"  capped rows         {len(capped)}, e.g. "
+              f"{int(capped.n_candidates_requested.iloc[0])} -> "
+              f"{int(capped.n_candidates.iloc[0])}")
+
+
+def reranker_families(directory: Path) -> None:
+    """Section 10 -- the annealers against the correct classical baseline."""
+    _rule("rerankers, against balanced_quota (section 10)")
+    if not (directory / "runs.csv").exists():
+        print(f"  {directory} absent")
+        return
+    runs = load_runs(directory)
+    table = runs.groupby(["family", "reranker"]).agg(
+        cost=("cpu_per_request", "median"),
+        parity=("exposure_parity", "median"),
+        ndcg_mean=("ndcg", "mean"),
+        ndcg_median=("ndcg", "median"),
+    )
+    print(f"  {'family':>11} {'reranker':>15} {'CPU-s/req':>11} {'parity':>8} "
+          f"{'NDCG mean':>10} {'NDCG med':>9}")
+    for (family, reranker), row in table.sort_index().iterrows():
+        print(f"  {family:>11} {reranker:>15} {row.cost:>11.3e} {row.parity:>8.4f} "
+              f"{row.ndcg_mean:>10.4f} {row.ndcg_median:>9.4f}")
+
+    if "balanced_quota" in table.index.get_level_values("reranker"):
+        baseline = table.xs("balanced_quota", level="reranker")
+        for annealer in ("qubo_feasible", "qubo_tabu"):
+            if annealer not in table.index.get_level_values("reranker"):
+                continue
+            got = table.xs(annealer, level="reranker")
+            ratio = got.cost / baseline.cost
+            print(f"\n{annealer} vs balanced_quota:")
+            print(f"    cost      {', '.join(f'{f} {v:.0f}x' for f, v in ratio.items())}")
+            print(f"    parity    identical: "
+                  f"{bool((abs(got.parity - baseline.parity) < 1e-9).all())}")
+            print(f"    NDCG mean worse on {int((got.ndcg_mean < baseline.ndcg_mean).sum())}"
+                  f" of {len(got)} families")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--results", type=Path, default=REPO_ROOT / "results" / "main")
+    parser.add_argument("--results", type=Path, default=REPO_ROOT / "results" / "main_v2")
+    parser.add_argument("--depth", type=Path, default=REPO_ROOT / "results" / "depth_v2")
+    parser.add_argument(
+        "--rerankers", type=Path, default=REPO_ROOT / "results" / "rerankers_v2"
+    )
+    parser.add_argument("--validity", type=Path, default=REPO_ROOT / "results" / "validity")
     parser.add_argument("--allow-untrustworthy", action="store_true")
     args = parser.parse_args()
 
@@ -195,6 +318,9 @@ def main() -> None:
     frontier(args.results)
     retraining(args.results)
     accuracy(args.results)
+    depth_sensitivity_numbers(args.depth)
+    reranker_families(args.rerankers)
+    energy_axis(args.validity)
     print()
 
 
