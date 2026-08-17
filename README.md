@@ -123,30 +123,35 @@ machine first confirmed idle. Reproduce with `python -m experiments.validity`:
 
 | busy workers | reported CPU power | reported utilisation | reported RAM power | total energy |
 |--------------|--------------------|----------------------|--------------------|--------------|
-| 0 | 1.540 W | 0 % | 10.000 W | 6.541e-05 kWh |
-| 2 | 1.526 W | **5 %** | 10.000 W | 6.624e-05 kWh |
-| 4 | 1.543 W | 0 % | 10.000 W | 6.744e-05 kWh |
-| 8 | 1.650 W | 0 % | 10.000 W | 7.362e-05 kWh |
+| 0 | 1.522 W | 0 % | 10.000 W | 6.446e-05 kWh |
+| 2 | 1.515 W | 0 % | 10.000 W | 6.619e-05 kWh |
+| 4 | 1.530 W | 0 % | 10.000 W | 6.726e-05 kWh |
+| 8 | 1.659 W | 0 % | 10.000 W | 7.294e-05 kWh |
 
 RAM power is exactly 10.000 W at every level — a hardcoded constant — and it supplies
-**82–87 %** of the reported total. The utilisation channel is unusable: 0, 0, 5, 0, 0 %
-across the five conditions, reading **zero under eight saturated cores**. The CPU channel
-does respond, weakly: mean CPU power moves 1.606 → 2.182 W, a **1.36×** swing against a
-true dynamic range of roughly 10× for a 15 W part. Because the constant channel dominates,
-mean *total* reported power moves **1.04×** between an idle machine and a saturated one —
-and the study spans workloads differing by six orders of magnitude in cost.
+**81–87 %** of the reported total. Utilisation reads **zero under eight saturated cores**,
+the one condition whose true answer is known in advance. The CPU channel does respond,
+weakly: mean CPU power moves 1.551 → 2.302 W, a **1.48×** swing against a true dynamic range
+of roughly 10× for a 15 W part. Because the constant channel dominates, mean *total* reported
+power moves **1.06×** between an idle machine and a saturated one — and the study spans
+workloads differing by six orders of magnitude in cost.
+
+**The backend's own verdict is not reproducible.** Run three times, twice on a confirmed-idle
+machine, the driver's pass/fail answer *flips*: one idle run reported *"the backend
+responded"*, the next *"did not respond to the load"*. The driver keys on whether any channel
+moves more than 2× and the CPU channel's per-second rate lands either side of that line
+(1.45×, then 1.53×). A controlled test whose verdict is not stable across repetitions is not
+delivering a measurement. What *is* stable across all three runs is the part that needs no
+threshold: RAM constant at 10.000 W supplying 81–87 % of the total, utilisation at 0 % under
+full load, and total reported power moving 1.04–1.06×.
 
 Two claims an earlier version of this section made **did not reproduce** when the test was
-re-run at a clean revision, and are withdrawn: utilisation is erratic rather than pinned at
-exactly zero, and the fully loaded run does **not** report less total energy than idle. A
-third claim, a regression showing the energy column was not even a rescaled clock, has been
-deleted because the sweep behind it cannot be regenerated — it was taken with a dirty
-working tree. The report records all three.
-
-Note that the driver's own automated verdict on this run reads *"the backend responded"*;
-the report disagrees with it and explains why — the verdict weighs channels equally instead
-of by their contribution to the total, which lets a responsive 14–18 % vouch for a constant
-82–87 %.
+re-run at a clean revision, and are withdrawn: the fully loaded run does **not** report less
+total energy than idle, and utilisation is not reliably "exactly 0.0 % at every level" (one
+run read 5 % at two workers) — erratic and dead are equally unusable. A third claim, a
+regression showing the energy column was not even a rescaled clock, has been deleted because
+the sweep behind it cannot be regenerated — it was taken with dirty code. The report records
+all three.
 
 The machine (Intel i5-8350U, 15 W TDP, Windows 10) exposes no RAPL, and WSL2 does not
 help — verified, not assumed: `/sys/class/powercap` exists but is empty and

@@ -1,14 +1,14 @@
 {
   "graded_load": {
-    "responded": false,
+    "responded": true,
     "channels": {
       "codecarbon.cpu_kwh": {
         "usable": true,
         "cumulative": true,
         "unit": "per second",
-        "idle": 4.309389225589432e-07,
-        "loaded": 6.395344427198562e-07,
-        "dynamic_range": 1.532634839126955,
+        "idle": 4.4612003396772184e-07,
+        "loaded": 6.061547849023996e-07,
+        "dynamic_range": 1.451773351532266,
         "monotone": false,
         "inverted": false,
         "constant": false
@@ -17,9 +17,9 @@
         "usable": true,
         "cumulative": true,
         "unit": "per second",
-        "idle": 2.7921708406746167e-06,
-        "loaded": 2.7778020741369106e-06,
-        "dynamic_range": 1.005173231560775,
+        "idle": 2.822438351036251e-06,
+        "loaded": 2.7778138728189155e-06,
+        "dynamic_range": 1.0160697473666847,
         "monotone": false,
         "inverted": true,
         "constant": false
@@ -31,9 +31,9 @@
         "usable": true,
         "cumulative": true,
         "unit": "per second",
-        "idle": 3.22310976323356e-06,
-        "loaded": 3.4173365168567664e-06,
-        "dynamic_range": 1.0695626484082175,
+        "idle": 3.2685583850039726e-06,
+        "loaded": 3.3839686577213157e-06,
+        "dynamic_range": 1.0590366755900649,
         "monotone": false,
         "inverted": false,
         "constant": false
@@ -42,9 +42,9 @@
         "usable": true,
         "cumulative": false,
         "unit": "as reported",
-        "idle": 1.5216100544625,
-        "loaded": 1.6586710007732144,
-        "dynamic_range": 1.0951835559576582,
+        "idle": 1.5402320491071428,
+        "loaded": 1.6497385925357146,
+        "dynamic_range": 1.081342684916252,
         "monotone": false,
         "inverted": false,
         "constant": false
@@ -64,20 +64,28 @@
         "usable": true,
         "cumulative": true,
         "unit": "per second",
-        "idle": 1.4201279465588123e-06,
-        "loaded": 1.5057058080192265e-06,
-        "dynamic_range": 1.0695626484082181,
+        "idle": 1.4401529728998303e-06,
+        "loaded": 1.4910036623412737e-06,
+        "dynamic_range": 1.059036675590065,
         "monotone": false,
         "inverted": false,
         "constant": false
       },
       "codecarbon.cpu_util_pct": {
-        "usable": false
+        "usable": true,
+        "cumulative": false,
+        "unit": "as reported",
+        "idle": 0.0,
+        "loaded": 0.0,
+        "dynamic_range": Infinity,
+        "monotone": false,
+        "inverted": false,
+        "constant": false
       }
     },
     "constant_channels": [
       "codecarbon.ram_watts"
     ],
-    "reason": "no channel changed by more than 2x between idle and full load"
+    "reason": ""
   }
 }

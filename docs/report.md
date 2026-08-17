@@ -68,10 +68,12 @@ diversity: intra-list similarity 0.286–0.297 against 0.357, better on 893 of 9
 p < 0.001. §10
 
 **The energy backend cannot be used as an energy axis on this hardware.** codecarbon 3.3.0
-reports a hardcoded 10.000 W for RAM which supplies 82–87 % of its total, 0 % CPU
-utilisation under eight saturated cores, and a total reported power that moves **1.04×**
-between an idle machine and a saturated one. Two claims the earlier draft made here did not
-reproduce and are withdrawn. §5
+reports a hardcoded 10.000 W for RAM which supplies 81–87 % of its total, 0 % CPU
+utilisation under eight saturated cores, and a total reported power that moves **1.04× to
+1.06×** between an idle machine and a saturated one. Its own pass/fail verdict **flips
+between two runs of the same controlled test on the same idle machine**, which is the
+sharpest evidence that it is not measuring anything. Two claims the earlier draft made here
+did not reproduce and are withdrawn. §5
 
 ---
 
@@ -347,58 +349,75 @@ running:
 
 | busy workers | reported CPU power | reported utilisation | reported RAM power | total energy | wall |
 |--------------|--------------------|----------------------|--------------------|--------------|------|
-| 0 | 1.540 W | 0 % | 10.000 W | 6.541e-05 kWh | 20.0 s |
-| 1 | 1.528 W | 0 % | 10.000 W | 6.601e-05 kWh | 20.7 s |
-| 2 | 1.526 W | **5 %** | 10.000 W | 6.624e-05 kWh | 20.7 s |
-| 4 | 1.543 W | 0 % | 10.000 W | 6.744e-05 kWh | 20.9 s |
-| 8 | 1.650 W | 0 % | 10.000 W | 7.362e-05 kWh | 21.8 s |
+| 0 | 1.522 W | 0 % | 10.000 W | 6.446e-05 kWh | 20.0 s |
+| 1 | 1.515 W | 0 % | 10.000 W | 6.613e-05 kWh | 20.7 s |
+| 2 | 1.515 W | 0 % | 10.000 W | 6.619e-05 kWh | 20.7 s |
+| 4 | 1.530 W | 0 % | 10.000 W | 6.726e-05 kWh | 20.9 s |
+| 8 | 1.659 W | 0 % | 10.000 W | 7.294e-05 kWh | 21.3 s |
 
 Four things, none of which is a matter of precision:
 
 1. **RAM power is exactly 10.000 W at every level, and it dominates the total** —
-   contributing 86.4 % of reported energy at idle and 82.1 % at full saturation. A channel
+   contributing 86.6 % of reported energy at idle and 81.3 % at full saturation. A channel
    that is bit-for-bit identical from idle to eight saturated cores is not a noisy
    measurement of the load; it is not a measurement of the load, and it needs no threshold
    to interpret.
-2. **The utilisation channel is unusable.** It reads 0, 0, 5, 0, 0 % across the five
-   conditions — non-monotone, and **0 % under eight saturated cores**, which is the one
-   condition whose true answer is known in advance.
+2. **The utilisation channel reads 0 % under eight saturated cores** — the one condition
+   whose true answer is known in advance.
 3. **The CPU channel does respond, and weakly.** Mean CPU power over each window
-   (`cpu_kwh ÷ wall_seconds`) moves from 1.606 W to 2.182 W, a **1.36× swing** across the
+   (`cpu_kwh ÷ wall_seconds`) moves from 1.551 W to 2.302 W, a **1.48× swing** across the
    full span from idle to saturation, against a true dynamic range of roughly 10× for a
    15 W part.
 4. **Because the constant channel dominates, the axis barely moves at all.** Mean total
-   reported power goes from 11.767 W to 12.182 W — **1.04×** — while the machine goes from
+   reported power goes from 11.603 W to 12.302 W — **1.06×** — while the machine goes from
    idle to fully saturated. §7 spans workloads differing by more than six orders of
-   magnitude in cost. An axis with a 4 % dynamic range cannot rank them.
+   magnitude in cost. An axis with a 6 % dynamic range cannot rank them.
 
 **Two claims from the earlier draft do not survive re-running, and are withdrawn.** The
-earlier draft reported utilisation as "exactly 0.0 % at every level"; it reads 5 % at two
-workers, so the channel is erratic rather than pinned — a slightly different defect, and no
-more usable. More importantly, the earlier draft reported that the fully loaded run
-consumed *less* total energy than the idle one. **That does not reproduce**: 7.362e-05
-against 6.541e-05, the right way round. It was a property of that run, not of the backend,
-and stating it as the latter was the same error this section is about.
+earlier draft reported that the fully loaded run consumed *less* total energy than the idle
+one. **That does not reproduce**: 7.294e-05 against 6.446e-05, the right way round. It was a
+property of that run, not of the backend, and stating it as the latter was the same error
+this section is about. The earlier draft also read an `R²` of 0.551 against CPU-seconds off a
+meter-enabled sweep; that subsection is deleted for the reason in §5.1.
 
-**This report disagrees with its own instrument, and the reason is a defect in the
-instrument.** The driver's automated verdict on this run reads *"The backend responded to
-the graded load; energy may be reported directly."* That verdict inspects each channel's
-response independently and keys on the CPU channel's 1.45× per-second rate ratio. It does
-not weight channels by their contribution to the reported total — so a channel that
-responds while supplying 14–18 % of the figure is allowed to vouch for an axis whose other
-82–87 % is a compile-time constant. The verdict logic should weight by contribution and
-does not. That is recorded here, in the report, rather than only in the code, because a
-report should not quietly overrule its own instrument: the channel-by-channel numbers are
-in `results/validity_v2/verdict.json` and a reader is equipped to take the other view.
+#### The backend's own verdict is not reproducible, which is the sharpest result here
 
-**Provenance caveat.** This run records `dirty=True` for `green_rerank`, at revision
-`7eff645`. The cause is three files uncommitted while this report was being written —
-`README.md`, `experiments/headline.py` and `experiments/verify_claims.py` — none of which
-the validity driver imports; its import closure is `experiments.manifest`,
-`green_rerank.analysis.validity`, `green_rerank.measure` and
-`green_rerank.measure.guards`, all byte-identical to `7eff645`. The run should be repeated
-once those files are committed so that the flag itself reads clean, rather than relying on
-this paragraph.
+The graded load has now been run three times, and this is worth reporting rather than
+resolving by picking one. The two runs on a confirmed-idle machine give:
+
+| | utilisation series | mean CPU power | mean total power | driver's verdict |
+|---|---|---|---|---|
+| first idle run | 0, 0, **5**, 0, 0 % | 1.606 → 2.182 W (1.36×) | 11.767 → 12.182 W (1.04×) | *"the backend responded"* |
+| this run | 0, 0, 0, 0, 0 % | 1.551 → 2.302 W (1.48×) | 11.603 → 12.302 W (1.06×) | *"did not respond to the load"* |
+
+**The verdict flips between two runs of the same experiment on the same idle machine.** The
+driver keys on whether any channel changed by more than 2× and the CPU channel's per-second
+rate lands either side of that line — 1.53× here, 1.45× before. A backend whose pass/fail
+answer is not reproducible across repetitions of a controlled test is not delivering a
+measurement, and quoting any single graded-load run as *the* result would be the identical
+error §7.1 is about: reporting one draw from a wide distribution as though it were the
+distribution.
+
+What is stable across all three runs is the part that matters, and it is the part that needs
+no threshold: RAM is a hardcoded 10.000 W supplying **81–87 %** of the total, utilisation
+reads **0 % under eight saturated cores** every time, and mean total reported power moves
+**1.04× to 1.06×** from idle to saturation. The first run's stray 5 % at two workers, absent
+from this one, is further evidence that the utilisation channel is noise rather than a
+pinned constant — an erratic channel and a dead one are equally unusable, and the project
+should not have to decide which it is to conclude that CPU-seconds is the defensible unit.
+
+The earlier draft of this section quoted the *"responded"* verdict and then argued against
+it, on the grounds that the verdict weighs channels equally instead of by their contribution
+to the total. That criticism still stands — a channel supplying 13–19 % of the figure should
+not be able to vouch for an axis whose remaining 81–87 % is a compile-time constant — and it
+is now joined by the stronger objection that the verdict is not even stable. Both idle runs
+are kept on disk rather than one being cited from the commit history —
+`results/validity_v2/` is this run and `results/validity_v2_repeat1/` the earlier one, each
+with its own `verdict.json` — so the comparison above is regenerable and a reader can take
+the other view. The third run is not kept: it was taken while this project's own mutation
+suite was running in the background, which is the contention error §4.3 describes and §5's
+earlier draft committed, so it is a record of a contaminated machine rather than of the
+backend.
 
 ### 5.1 Why no other route was available
 

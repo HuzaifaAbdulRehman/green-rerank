@@ -69,6 +69,11 @@ class Data:
     rerank_users: pd.DataFrame
     readings: pd.DataFrame
     graded: pd.DataFrame
+    #: The earlier of the two idle graded-load runs. Kept on disk rather than cited from
+    #: git history, because §5 now makes a claim *about the difference between the runs* --
+    #: and a table whose other half exists only in a commit message is exactly the kind of
+    #: uncheckable citation this module exists to prevent.
+    graded_repeat1: pd.DataFrame
 
 
 def load() -> Data:
@@ -92,6 +97,9 @@ def load() -> Data:
         rerank_users=pd.read_csv(ROOT / "results" / "rerankers_v2" / "per_user.csv"),
         readings=pd.read_csv(ROOT / "results" / "main_v2" / "readings.csv"),
         graded=pd.read_csv(ROOT / "results" / "validity_v2" / "graded_load.csv"),
+        graded_repeat1=pd.read_csv(
+            ROOT / "results" / "validity_v2_repeat1" / "graded_load.csv"
+        ),
     )
 
 
@@ -146,6 +154,28 @@ def t_graded(d: Data) -> list[str]:
             f"{'**' if x['codecarbon.cpu_util_pct'] else ''} | "
             f"{x['codecarbon.ram_watts']:.3f} W | "
             f"{x['codecarbon.total_kwh']:.3e} kWh | {x.wall_seconds:.1f} s |"
+        )
+    return rows
+
+
+def t_verdict_flip(d: Data) -> list[str]:
+    """The two idle runs side by side, including the driver's verdict on each."""
+    verdicts = {
+        "first idle run": '*"the backend responded"*',
+        "this run": '*"did not respond to the load"*',
+    }
+    rows = []
+    for label, frame in (("first idle run", d.graded_repeat1), ("this run", d.graded)):
+        util = ", ".join(
+            f"**{v:.0f}**" if v else f"{v:.0f}" for v in frame["codecarbon.cpu_util_pct"]
+        )
+        cpu = frame["codecarbon.cpu_kwh"] / frame.wall_seconds * 3.6e6
+        total = frame["codecarbon.total_kwh"] / frame.wall_seconds * 3.6e6
+        rows.append(
+            f"| {label} | {util} % | "
+            f"{cpu.iloc[0]:.3f} → {cpu.iloc[-1]:.3f} W ({cpu.iloc[-1] / cpu.iloc[0]:.2f}×) | "
+            f"{total.iloc[0]:.3f} → {total.iloc[-1]:.3f} W "
+            f"({total.iloc[-1] / total.iloc[0]:.2f}×) | {verdicts[label]} |"
         )
     return rows
 
@@ -511,6 +541,7 @@ class Literal:
 
 TABLES: list[Table] = [
     Table("§5 graded load", "| busy workers | reported CPU power |", t_graded, ordered=True),
+    Table("§5 verdict flip across runs", "| | utilisation series |", t_verdict_flip, ordered=True),
     Table("§6 datasets", "| catalogue | users | items |", t_datasets),
     Table(
         "§7.1 stable break-evens", "| cheaper below N | cheaper above N |",

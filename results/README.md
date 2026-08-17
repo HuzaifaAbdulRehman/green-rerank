@@ -7,7 +7,9 @@ Each directory is one experiment, self-describing, and produced by one code vers
 | `main/` | the primary sweep — 170 runs, 5 catalogues × up to 5 families × {no reranker, `quota_mmr`} × 5 repeats |
 | `depth/` | retrieval-depth sensitivity — 90 runs varying the reranker's problem size over 50…800 |
 | `energy/` | the same pipeline with the energy meter attached, for the agreement test in report §5.1 |
-| `validity/` | the graded-load experiment: what the energy backend reports about a *known* load |
+| `validity/` | the first graded-load experiment — **superseded**, see below |
+| `validity_v2/` | the graded-load experiment: what the energy backend reports about a *known* load. Report §5 quotes this one |
+| `validity_v2_repeat1/` | an independent repetition of `validity_v2/` on the same idle machine. Kept because the backend's verdict **differs between the two**, which report §5 treats as a result |
 | `rerankers/` | the first reranker comparison — **superseded**, see below |
 | `rerankers_v2/` | rerankers including `balanced_quota`, the baseline that decides the QUBO question |
 | `main_v2/`, `depth_v2/` | regenerated against the corrected companion |
@@ -25,6 +27,15 @@ interaction-matrix defect.**
 | `main/` | Companion `binary=True` summed duplicate interactions, so 0.2–18.1 % of training rows on the four Amazon catalogues were counts rather than indicators, and the popularity tiers used as fairness groups counted repeat purchases. Also: the degenerate exposure-parity metric, and accuracy tested on one repeat of five. | **No** — `green_rerank dirty=True` |
 | `depth/` | Six depth-800 rows were labelled with a depth they never ran at, because the row assembly overwrote the measured value with the requested one. Also the degenerate parity metric. | **No** — `green_rerank dirty=True` |
 | `rerankers/` | It omitted `balanced_quota`, so the annealers were compared against a heuristic with no remainder rule rather than against correct apportionment. Also: both annealers were unseeded, and `lam` differed between the classical (0.5) and QUBO (0.3) solvers, so the two families optimised different objectives. | **No** — `companion dirty=True` |
+| `validity/` | Taken at `511d993` against a superseded companion. Two of the claims report §5 drew from it did not reproduce when the experiment was re-run: utilisation is not reliably pinned at exactly 0 %, and the fully loaded run does **not** report less total energy than idle. | **No** — `green_rerank dirty=True` |
+| `energy/` | The meter-enabled sweep behind the deleted report §5.1. Its regression may well have been right; it cannot be regenerated, so the section was removed rather than restated. | **No** — `green_rerank dirty=True` |
+
+`validity_v2/` and `validity_v2_repeat1/` are **both current** — they are two runs of one
+experiment, not a replacement and an original. §5 reports the pair because the backend's
+pass/fail verdict flips between them on an idle machine, and a single run would have
+concealed that. A third run exists in this session's history and is deliberately **not**
+kept: it was taken while this project's own mutation suite occupied the machine, so it
+records contention rather than the backend.
 
 **The interaction-matrix defect did not affect `depth/` or `rerankers/`.** Both ran on
 MovieLens 100K only, which contains zero duplicate `(user, item)` pairs — confirmed from
