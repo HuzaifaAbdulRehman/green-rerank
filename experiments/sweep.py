@@ -70,6 +70,19 @@ DEFAULTS: dict[str, Any] = {
     "min_users": 50,
     "min_items": 50,
     "family_kwargs": {},
+    # Free-form metadata, carried into manifest.json and otherwise ignored by the driver.
+    #
+    # It exists so that a hypothesis can be stamped into a run's own provenance record
+    # *before* the run produces an answer. The manifest is written before the first cell
+    # executes, so anything here is fixed at launch and cannot be revised once the result
+    # is known -- which is the only thing that makes a stated prediction worth more than a
+    # recollection. Used by configs/main_pinned.yaml to register what would count as
+    # confirming report §7.1's threading diagnosis and what would falsify it.
+    #
+    # Deliberately not validated beyond "it is allowed to exist": the point is to record
+    # prose the driver has no opinion about. Every other unknown key stays an error,
+    # because `repeat: 5` for `repeats: 5` silently runs the sweep once.
+    "prediction": {},
     # ``family -> catalogues it may run on``. Families absent from this map run
     # everywhere. It exists because the neural families are scoped to MovieLens 100K:
     # GRU4Rec costs ~135 CPU-seconds per epoch there, and the largest catalogue has 17x
