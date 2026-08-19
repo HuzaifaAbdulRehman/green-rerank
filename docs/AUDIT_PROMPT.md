@@ -37,15 +37,30 @@ the audit is a claim already framed favourably.
 
 ## How to audit
 
-Work from the data outward, not from the prose inward. The results are on disk in
-`results/`, with raw per-stage measurement windows in `readings.csv`, derived per-run
-figures in `runs.csv`, and per-user metrics in `per_user.csv`. **Re-derive the headline
-numbers yourself from `readings.csv`** rather than checking `runs.csv` against the report;
-the derivation is exactly where an error would live and reading only the derived file
-would step over it.
+Work from the data outward, not from the prose inward. Results are on disk in `results/`,
+with raw per-stage measurement windows in `readings.csv`, derived per-run figures in
+`runs.csv`, and per-user metrics in `per_user.csv`. **Re-derive the headline numbers
+yourself from `readings.csv`** rather than checking `runs.csv` against the report; the
+derivation is exactly where an error would live and reading only the derived file would
+step over it.
 
-There is a script, `experiments/verify_claims.py`, that recomputes ~35 claims from the
-raw measurement records.
+**Not every directory under `results/` is live, and auditing a dead one wastes your time.**
+`main/`, `depth/`, `rerankers/`, `energy/` and `validity/` are **superseded** -- measured
+with defects the project later found, and several record `dirty=True`, meaning the code
+that produced them cannot be checked out. `results/README.md` gives the reason per
+directory. The report is supposed to cite none of them.
+
+Test that rather than accept it: grep the report for any number traceable to a superseded
+directory. A stale citation is an easy and invisible way for a retracted figure to survive,
+and it is exactly what the author would miss by rereading.
+
+Live directories: `main_v2/`, `depth_v2/`, `rerankers_v2/`, `validity_v2/`,
+`validity_v2_repeat1/`, and three `_pinned` counterparts described below.
+
+There are two author-written checkers, and **neither is evidence on its own**.
+
+`experiments/verify_claims.py` recomputes 36 claims from the raw measurement records
+(`runs.csv`, `readings.csv`, `per_user.csv`, `graded_load.csv`).
 **Do not treat its passing as evidence.** It was written by the same author as the code it
 checks and could test weaker statements than the report makes, or omit the claims that are
 hardest to support. An earlier version was substantially tautological -- it read the
@@ -54,6 +69,18 @@ to recompute from `readings.csv` / `per_user.csv` instead. Check that the rebuil
 any check that still consumes `tables/` is verifying the analysis against itself. Read it critically and ask what it
 does *not* check. If you find a claim in the report with no corresponding check, that gap
 is itself a finding.
+
+It also has a documented history of pointing at the wrong data: until recently it defaulted
+to a superseded validity directory, and was thereby certifying two claims that a clean
+re-run had already refuted. Check every default path it uses, not only its arithmetic.
+
+`experiments/check_report.py` diffs every table and thirteen prose figures in
+`docs/report.md` against freshly recomputed values, exiting non-zero on any difference. It
+exists because §4.5 once justified a threshold with a list of twelve numbers, six of which
+were not in the data -- and the argument that list supported happened to be correct, so
+nothing looked wrong. Attack it the same way: it exempts some tables in a `NOT_CHECKED`
+list, and whether those exemptions are honest is a fair question. A table that is silently
+uncovered reads exactly like a table that passed.
 
 Likewise `tests/mutations.py`, which introduces deliberate bugs and asserts the tests
 catch them. Ask whether the mutations are the ones that matter or the ones that were easy
@@ -85,10 +112,43 @@ correction. Check the pairing is on the same users, that the correction covers t
 reported family rather than a subset chosen after seeing results, and that
 "lower is better" metrics are scored in the right direction.
 
+**The pre-registrations.** Three sweeps -- `main_pinned/`, `depth_pinned/`,
+`rerankers_pinned/` -- carry a `prediction` block inside their own `manifest.json`, claiming
+to record what would confirm or falsify a hypothesis *before* the run produced an answer.
+The report leans on that ordering. **Verify it rather than believe it:** the predictions are
+supposed to have been committed to git before the corresponding results directory existed,
+so `git log` on each config against the manifest's `created_utc` will show whether the claim
+is true. If a prediction was written or edited after the numbers were known, every
+conclusion drawn from "we predicted this" collapses -- and that is the most serious finding
+available in this repository.
+
+Then ask whether the registered thresholds were placed where they could plausibly fail, or
+set wide enough to pass whatever happened.
+
+**The thread-count result.** The project claims CPU-seconds is biased upward on
+thread-parallel stages, because OpenMP threads spin-wait and the kernel charges that as
+busy, and that pinning the thread count removes both variance and bias. The `_v2` /
+`_pinned` pairs are the evidence. Check the pairs differ *only* in thread count, that
+accuracy is bit-identical across each pair as claimed -- if it is not, the intervention
+touched more than cost -- and that the report's remaining unpinned figures are flagged
+wherever they appear.
+
+**False precision.** At least one figure here was quoted to three significant digits when
+its denominator was a handful of clock ticks, so the ratio could only move in ~20 % steps.
+The author found that one. Look for others: any ratio whose denominator is a cheap stage is
+a candidate, and the honest fix is to state the granularity rather than the digits.
+
 **Confounds in the cost comparison.** Every family is measured on the same machine in the
 same sweep, but not necessarily under identical conditions. Look for anything that
 differs systematically between families other than the family itself — memory pressure,
 BLAS thread counts, ordering effects, cache warmth from the preceding run.
+
+**The retractions.** This report retracts several claims from its own earlier version --
+including a fairness result and an accuracy-versus-depth relationship -- and deletes a
+section whose supporting sweep cannot be regenerated. Check the retractions are real rather
+than cosmetic: that the retracted claim does not survive elsewhere in softer language, and
+that each replacement claim is actually supported. A report advertising its own corrections
+can use them as a credibility device. Test whether these earn it.
 
 **Generalisation.** The study runs on five catalogues and one machine. Identify every
 place the report generalises beyond what it measured, and every place it correctly
@@ -123,6 +183,20 @@ There is a virtual environment at `.venv`. The test suite is `pytest tests/ -m "
 timing"`; the `timing` marker covers tests that assert real elapsed behaviour and can be
 run separately. Passing `--strict-companion` turns companion-dependent skips into
 failures, which is what you want if `../qubo-rerank` is present.
+
+Both checkers run without arguments:
+
+```bash
+python -m experiments.verify_claims    # 36 assertions about the data
+python -m experiments.check_report     # does the report say what the data says
+```
+
+**`../qubo-rerank` is read-only.** It is a finished, published project. Import from it and
+read it, but modify no file under it; if you find a bug there, report it rather than fix it.
+
+If you re-run a sweep: the three `_pinned` directories were produced with
+`OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1` set and the `_v2` ones without.
+Reproducing either without matching that will not give comparable costs.
 
 **Measurements need an idle machine.** The analysis refuses to read rows measured under
 CPU contention. If you re-run any sweep, check nothing else is running first, and expect
