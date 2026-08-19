@@ -12,6 +12,7 @@ import os
 
 import pytest
 
+import green_rerank.measure.session as session_module
 from green_rerank.measure import (
     CompositeMeter,
     ConditionsMonitor,
@@ -425,7 +426,18 @@ class TestBelowQuantum:
         assert "below_quantum" not in reading.meta
         assert reading.repeats == 1
 
-    def test_the_reason_for_stopping_is_recorded(self):
+    def test_the_reason_for_stopping_is_recorded(self, monkeypatch):
+        """The cap fires before the target, so the reading is flagged, not reported.
+
+        The quantum is pinned rather than inherited from the host. ``measure_repeated``
+        computes its target as ``clock_quantum() * min_quanta``, and the real quantum is
+        15.625 ms on this Windows laptop but around a millisecond on a Linux CI runner --
+        so a 0.05 s cap trips long before the target on one and never reaches it on the
+        other. Left to the host, this test asserted a Windows-only outcome and failed
+        every CI run on Linux while passing locally, which is precisely the class of
+        defect the suite exists to catch.
+        """
+        monkeypatch.setattr(session_module, "clock_quantum", lambda: 0.015625)
         clock = FakeClock()
         session = MeasurementSession(clock=clock, cpu_clock=cpu_clock_from(clock))
 

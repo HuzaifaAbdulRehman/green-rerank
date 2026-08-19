@@ -742,8 +742,15 @@ def _per_user(tmp_path: Path, n_users: int = 200, repeats: int = 2) -> Path:
     return path
 
 
+@pytest.mark.needs_companion
 class TestPairedComparison:
-    """Accuracy has to be held to the same standard of evidence as cost."""
+    """Accuracy has to be held to the same standard of evidence as cost.
+
+    Marked as needing the companion because ``experiments.compare`` imports the metric
+    implementations from it. Without the marker these seven tests ran in CI, where the
+    checkout is private and absent, and failed with ``CompanionNotFound`` -- invisible
+    locally, where the companion is always present.
+    """
 
     def test_a_real_difference_is_detected_with_its_effect_size(self, tmp_path: Path):
         from experiments.compare import compare_all

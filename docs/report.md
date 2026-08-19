@@ -190,8 +190,13 @@ OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
 
 §7.1 registered that prediction and then tested it: pinning does make the ItemKNN/ALS
 crossing reportable. It is stated here, in the method, rather than as a footnote, because it
-is the single change most likely to matter to someone repeating this work. The sweeps in §7.2
-onward were **not** run that way, and each reports the consequence rather than hiding it.
+is the single change most likely to matter to someone repeating this work.
+
+**Only §7.1 has a pinned counterpart.** §7.2 through §7.6 and §10 were measured unpinned and
+were not repeated, so each of those sections states that condition where its numbers appear
+rather than relying on this paragraph. Their conclusions were checked against the pinned
+sweep and none changes direction; §7.2 and §7.4 give the recomputed figures. Re-running the
+depth and reranker sweeps pinned is listed in §11 as outstanding work, not as a caveat.
 
 **Pinning is not only a variance fix — it also removes an upward bias, and that was not
 anticipated.** The expectation was a throughput cost: single-threaded runs should take longer
@@ -681,6 +686,14 @@ produced deliberately as a check rather than encountered as a defect.
 
 **The reranker accounts for 81.6 – 97.6 % of per-request cost, multiplying serving cost by
 5.7× to 42.8×.** Measured across all five catalogues and every family, 17 configurations.
+
+Measured **unpinned** (`results/main_v2/`), so the denominators of these shares carry the
+§4.1 spin-wait inflation wherever the retrieval model is thread-parallel. Recomputed on the
+pinned sweep the range is 86.8 – 97.6 % and the multiplier 7.8 – 42.5×: the low end rises
+because ALS's and GRU4Rec's serving costs were the inflated ones, so removing the inflation
+makes the reranker's share of them *larger*. The claim is unaffected in direction and the
+`ml100k`/`popularity` figure barely moves (24.9× against 24.7×), popularity having been
+serial all along.
 The share is computed per run and then taken as a median, not as a ratio of two medians,
 and it is the reranking stage's share of the three serving stages — a ratio of quantities
 measured over the same users, so no user count enters it.
@@ -791,7 +804,11 @@ on accuracy and cost alone, meaning reranking did not cost accuracy on those cat
 
 Holding traffic fixed at 100,000 requests on MovieLens 100K and varying only how often the
 model is retrained. "Never" is one training at deployment; a cadence of *C* adds
-`100,000 / C` further trainings. All figures CPU-seconds.
+`100,000 / C` further trainings. All figures CPU-seconds, measured **unpinned**. The absolute values for the thread-parallel
+families are inflated by §4.1's spin-wait — GRU4Rec's training is 417.9 CPU-seconds here and
+79.4 pinned — so read this table for its *ratios*, which are what the cadence argument needs
+and which largely survive: the GRU4Rec lever is 801× unpinned and 791× pinned, ALS's 277×
+and 234×. A deployer wanting absolute budgets should take them from `results/main_pinned/`.
 
 | retrain every | `popularity` | `itemknn` | `als` | `multvae` | `gru4rec` |
 |---------------|--------------|-----------|-------|-----------|-----------|
@@ -875,7 +892,10 @@ What the data does support is narrower and still worth saying:
 The reranking-cost claim is measured at one retrieval depth, and the reranker's cost
 scales with its problem size — so as stated it is a claim about 200 candidates. Testing it
 meant varying depth over a 16× range with everything else fixed: 90 runs on MovieLens
-100K, three families, three repeats, with and without the reranker. Depths are the
+100K, three families, three repeats, with and without the reranker. Measured **unpinned**;
+this sweep was not repeated with threads pinned, so the exponents below may carry a
+thread-count contribution and are reported as measured. The shares are ratios within a
+single run, which limits the exposure. Depths are the
 **actual** depths achieved, not the requested ones (§4.4).
 
 **Reranker share of per-request cost, with `quota_mmr`:**
@@ -1097,7 +1117,10 @@ axis — list diversity — and prices it.
 ## 10. What a quantum-inspired reranker costs in a pipeline
 
 63 runs on MovieLens 100K: six rerankers plus a no-reranker baseline, across three
-retrieval families, three repeats, 100 users at retrieval depth 100. Zero failures, all
+retrieval families, three repeats, 100 users at retrieval depth 100. Measured **unpinned**
+and not repeated with threads pinned; the headline quantities here are ratios between
+rerankers sharing one retrieval model, which cancels most of §4.1's exposure, but the
+absolute per-request costs carry it. Zero failures, all
 rows trustworthy, mains power throughout, no stage below the clock quantum. The stochastic
 solvers are seeded and every solver receives the same `lam`, neither of which was true of
 the superseded sweep.
@@ -1250,6 +1273,15 @@ magnitude.
 
 Five things this harness makes askable, listed because each is a piece of work rather than
 a wish. Three of them exist because a claim above had to be withdrawn.
+
+**Re-run the depth and reranker sweeps with threads pinned.** §7.1 established that the
+unpinned cost unit is biased upward on thread-parallel stages, and only the main sweep has a
+pinned counterpart. `results/depth_v2/` and `results/rerankers_v2/` do not, so §7.6's
+O(n^1.21–1.29) exponents and §10's 288–290× multiplier are measured in a unit now known to
+be inflated for some of their terms. Both sweeps are cheap — about 5 and 12 minutes — which
+makes this the first thing to do rather than the last. The conclusions were checked against
+the pinned main sweep and none changes direction, so this is about precision, not about
+whether the findings hold.
 
 **Whether the pinned figures hold on other hardware.** ~~Re-running the main sweep under
 `OMP_NUM_THREADS=1`~~ — **done**, `results/main_pinned/`, and §7.1 reports it: the
