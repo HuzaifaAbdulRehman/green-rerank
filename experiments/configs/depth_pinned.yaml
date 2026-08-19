@@ -1,0 +1,57 @@
+# The depth study with the BLAS thread count pinned to one.
+#
+# Identical to depth_v2.yaml in every experimental parameter. The difference is outside
+# the config: launched with OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1.
+#
+# Report §7.1 established that CPU-seconds is not merely noisier on thread-parallel
+# stages but biased upward, because OpenMP threads spin-wait at synchronisation points
+# and the kernel charges that as busy. §7.6's cost-scaling exponents were measured
+# unpinned, so each family's rerank cost may carry a thread-count contribution that
+# varies with problem size -- which is exactly the axis the exponent is fitted over.
+#
+# Predictions registered before the run, embedded in this run's manifest.
+name: depth_pinned
+
+prediction:
+  registered_before_run: true
+  mechanism_under_test: >
+    The reranker is pure-numpy and largely serial, so its stage cost should barely move.
+    Retrieval scoring for ALS is the thread-parallel part, so the share should rise
+    slightly (the denominator shrinks) while the exponent, which is fitted on the rerank
+    stage alone, should be close to unchanged.
+
+  expected:
+    rerank_stage_exponent: >
+      stays within +/- 0.10 of the unpinned O(n^1.21-1.29). The reranker does not use
+      BLAS heavily, so a large shift would mean the exponent was measuring threading
+      rather than problem size.
+    rerank_cost_ratio_50_to_800: >
+      stays within +/- 20 % of the unpinned 31.5x.
+    exposure_parity_flat: >
+      remains flat across depth, per-family spread below 0.05. Parity is a property of
+      the allocation, not of the clock, so any movement here would indicate a bug rather
+      than a threading effect.
+    share_of_serving_cost: >
+      rises at the low-depth end relative to unpinned 75.1-99.1 %, because ALS's and
+      popularity's retrieval costs fall when the spin-wait is removed while the
+      reranker's does not.
+    ndcg_identical: >
+      every accuracy figure bit-identical to depth_v2. Pinning must change cost only.
+
+  falsified_if: >
+    The fitted exponent moves by more than 0.10, or the 50-to-800 cost ratio moves by
+    more than 20 %. Either would mean §7.6's scaling law was partly a measurement of
+    thread behaviour rather than of the reranker's problem size, and the O(n^1.2-1.3)
+    claim would need restating with that caveat.
+
+  not_predicted: >
+    Absolute per-request costs, which fall by construction. Only ratios, exponents and
+    quality metrics are compared across the two conditions.
+
+catalogues: [ml100k]
+families: [popularity, itemknn, als]
+rerankers: [null, quota_mmr]
+n_candidates: [50, 100, 200, 400, 800]
+n_users: 200
+k: 10
+repeats: 3

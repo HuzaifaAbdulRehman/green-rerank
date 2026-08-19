@@ -1,0 +1,61 @@
+# The reranker comparison with the BLAS thread count pinned to one.
+#
+# Identical to rerankers_v2.yaml in every experimental parameter; launched with
+# OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1.
+#
+# §10's headline is a ratio between rerankers sharing one retrieval model, which cancels
+# most of the exposure to §4.1's spin-wait inflation -- but "most" is an argument, not a
+# measurement, and the annealers call into numpy and dimod where the classical rerankers
+# do not. If the annealers were quietly multi-threaded, the 288-290x multiplier is
+# inflated and the honest figure is smaller.
+#
+# Predictions registered before the run, embedded in this run's manifest.
+name: rerankers_pinned
+
+prediction:
+  registered_before_run: true
+  mechanism_under_test: >
+    Whether the QUBO annealers' cost advantage over largest-remainder apportionment is
+    partly an artefact of counting spin-wait in a thread-parallel solver.
+
+  expected:
+    qubo_feasible_vs_balanced_quota: >
+      remains far above 100x. Point prediction: within +/- 25 % of the unpinned
+      288-290x, i.e. roughly 215-360x.
+    qubo_tabu_vs_balanced_quota: >
+      qubo_tabu is wall-clock bounded, so its CPU-seconds should FALL by roughly the
+      factor by which it was multi-threaded, if it was. This is the row most likely to
+      move and the one to watch.
+    exposure_parity_ties: >
+      balanced_quota still ties both annealers at 0.200 on all 900 paired user-records.
+      Parity is an allocation property and must not move at all.
+    intra_list_similarity: >
+      annealers still lower than balanced_quota's 0.3573, better on ~893 of 900 users.
+      This is §10's surviving finding and pinning must not touch it.
+    ndcg_identical: >
+      every accuracy figure bit-identical to rerankers_v2.
+
+  falsified_if: >
+    The qubo_feasible multiplier falls below 100x. That would mean a material part of
+    §10's cost argument was spin-wait rather than work, and the section's central
+    quantity would need restating. A fall in qubo_tabu alone is expected rather than
+    falsifying, because its stopping rule is wall-clock: pinning changes how much CPU
+    time one wall-clock second buys, which is a property of that solver and is already
+    flagged in §10.
+
+  not_predicted: >
+    Absolute per-request costs. Whether qubo_tabu remains cheaper than qubo_feasible,
+    since their relationship is set by a timeout rather than by work.
+
+catalogues: [ml100k]
+families: [popularity, itemknn, als]
+rerankers: [null, greedy_topk, mmr, quota_mmr, balanced_quota, qubo_feasible, qubo_tabu]
+n_users: 100
+n_candidates: 100
+k: 10
+repeats: 3
+lam: 0.3
+mu: 1.0
+family_kwargs:
+  als:
+    epochs: 15
