@@ -71,10 +71,10 @@ baseline it does not beat. §7.5
 100,000 requests, GRU4Rec's total cost moves **801×** between training once and retraining
 every 100 requests. What that buys was **not measured** and is not claimed. §7.4
 
-**A classical reranker matches the quantum-inspired ones exactly, for ~1/290th the cost.**
+**A classical reranker matches the quantum-inspired ones exactly, for ~1/270th the cost.**
 `balanced_quota` reaches exposure parity 0.200 — the optimum permitted by the integrality
 of list positions — on all three retrieval families, and ties both annealers on **900 of
-900** paired user-records while costing **288–290×** and **232–233×** less. This
+900** paired user-records while costing roughly **255–304×** and **195–233×** less. This
 **retracts** §9 and §10 of the earlier draft, which claimed the annealers reached a
 fairness optimum classical methods could not. What the annealers do still buy is list
 diversity: intra-list similarity 0.286–0.297 against 0.357, better on 893 of 900 users,
@@ -951,6 +951,26 @@ comes with an accuracy bonus attached.
 
 ![Retrieval depth is paid for and discarded](../results/depth_v2/figures/depth_sensitivity.png)
 
+#### The scaling law is not an artefact of threading
+
+The exponents above were fitted on unpinned measurements, and §4.1 showed that unit is
+biased upward on thread-parallel stages. Since the exponent is fitted *over problem size* —
+the same axis a thread-count change would move along — that is a live objection rather than
+a pedantic one. So this sweep was repeated pinned (`results/depth_pinned/`, 90 runs,
+predictions registered beforehand):
+
+| family | unpinned | pinned |
+|---|---|---|
+| `als` | O(n^1.21), 29.0× | O(n^1.23), 29.5× |
+| `itemknn` | O(n^1.29), 34.7× | O(n^1.29), 32.1× |
+| `popularity` | O(n^1.25), 31.0× | O(n^1.24), 28.9× |
+
+Every exponent moves by at most 0.02, against a registered tolerance of 0.10, and the
+overall 50-to-800 cost ratio moves from 31.5× to 32.1×. Exposure parity spreads are
+identical to four decimals, and all 36 NDCG cells are bit-identical. The reranker is
+pure-numpy and effectively serial, so there was little threading for pinning to remove —
+which is what the numbers say, rather than what the argument assumed.
+
 #### One thing depth does change, and why it is not usable
 
 Candidate hit rate — the fraction of users whose held-out item is anywhere in the candidate
@@ -1147,6 +1167,25 @@ inconsistency was caught by `experiments/check_report.py` (§12) rather than by 
 Including the retrieval stages in both numerator and denominator gives 203× and 253×
 instead of 232× and 289×, because retrieval adds a fixed ~8e-5 to the cheap side.
 
+**The two-figure precision of that column is not real, and the pinned re-run shows why.**
+Repeating this sweep with threads pinned (`results/rerankers_pinned/`, predictions
+registered beforehand) leaves parity, accuracy and intra-list similarity bit-identical but
+moves the multiplier to **255 – 304×** for `qubo_feasible` and **195 – 233×** for
+`qubo_tabu`:
+
+| | `qubo_feasible` vs `balanced_quota` | `qubo_tabu` vs `balanced_quota` |
+|---|---|---|
+| unpinned | 288 – 290× | 232 – 233× |
+| pinned | 255 – 304× | 195 – 233× |
+
+The cause is the denominator, not the annealer. `balanced_quota`'s reranking stage costs
+0.1042 s on two families and 0.1250 s on the third — **6.7 and 8.0 clock quanta**. A stage
+that small is measured in a handful of scheduler ticks divided by the repeat count, so its
+value moves in ~20 % steps and the ratio inherits that granularity. Unpinned it happened to
+land on the same tick for all three families, which is what produced the suspiciously tight
+288 – 290. The honest claim is **roughly 250–300×**, and the limit on stating it more
+precisely is the clock, not the solver.
+
 **The reranker becomes 99.9 % of per-request cost.** At that point the retrieval model
 underneath is a rounding error: swapping ItemKNN for ALS changes the per-request total by
 less than a tenth of a percent, because both are invisible next to the annealer. §7.1's
@@ -1173,7 +1212,7 @@ Paired per-user comparisons, one Holm correction across the eight tests reported
 fairness optimum "the classical rerankers do not get there at any setting tested". They do
 get there. A largest-remainder apportionment reaches the identical allocation on **900 of
 900 paired user-records** — not a statistical tie but bit-for-bit the same parity value —
-for **1/290th** of `qubo_feasible`'s cost and **1/233rd** of `qubo_tabu`'s. The earlier
+for roughly **1/270th** of `qubo_feasible`'s cost and **1/215th** of `qubo_tabu`'s. The earlier
 claim was an artefact of the baseline set: the only quota-aware classical method in the
 registry was `quota_mmr`, whose missing remainder rule leaves it at 0.249. Omitting the
 correct baseline is what produced the finding.
@@ -1189,8 +1228,8 @@ similarity 0.2860 (`qubo_feasible`) and 0.2969 (`qubo_tabu`) against `balanced_q
 0.3573, better on **893 of 900** paired user-records, p < 0.001. This is a real, robust,
 consistently-signed advantage and it is not what either project set out to measure.
 
-Priced, it is a difference of 0.071 in intra-list similarity for **288–290×** the reranking
-cost — the stage that is already 88–100 % of per-request cost. Stated as a rate: each 0.01
+Priced, it is a difference of 0.071 in intra-list similarity for roughly **250–300×** the
+reranking cost — the stage that is already 88–100 % of per-request cost. Stated as a rate: each 0.01
 of intra-list similarity costs roughly 40× the entire classical reranking budget. Whether
 that is worth paying is a deployment decision this report does not make; what it can say is
 that the decision is about diversity, not fairness, and the earlier draft had it about
@@ -1225,7 +1264,7 @@ than either result, and it is the reason to trust the retraction in §9 rather t
 as one audit's opinion.
 
 Two boundaries on the claim, so it is not read as tighter than it is. First, the companion
-explicitly withdrew its own timing figures pending a clean measurement, so the **288–290×**
+explicitly withdrew its own timing figures pending a clean measurement, so the ~250–300×
 here is this project's number for this configuration and machine — not a confirmation of any
 multiplier the companion once quoted. Second, the intra-list similarity axis is
 operating-point-dependent in the companion's data: it reports `quota_mmr` winning ILS
@@ -1274,15 +1313,6 @@ magnitude.
 Five things this harness makes askable, listed because each is a piece of work rather than
 a wish. Three of them exist because a claim above had to be withdrawn.
 
-**Re-run the depth and reranker sweeps with threads pinned.** §7.1 established that the
-unpinned cost unit is biased upward on thread-parallel stages, and only the main sweep has a
-pinned counterpart. `results/depth_v2/` and `results/rerankers_v2/` do not, so §7.6's
-O(n^1.21–1.29) exponents and §10's 288–290× multiplier are measured in a unit now known to
-be inflated for some of their terms. Both sweeps are cheap — about 5 and 12 minutes — which
-makes this the first thing to do rather than the last. The conclusions were checked against
-the pinned main sweep and none changes direction, so this is about precision, not about
-whether the findings hold.
-
 **Whether the pinned figures hold on other hardware.** ~~Re-running the main sweep under
 `OMP_NUM_THREADS=1`~~ — **done**, `results/main_pinned/`, and §7.1 reports it: the
 pre-registered predictions held and the ItemKNN/ALS break-even became reportable at
@@ -1316,7 +1346,7 @@ is not an axis, which is a limitation of the plot rather than a finding about re
 three-dimensional frontier over accuracy, cost and exposure parity would say which
 configurations are worth deploying *once fairness is a stated requirement* — and §10
 already suggests the answer, since `balanced_quota` reaches the parity optimum for
-1/290th of the annealer's cost.
+roughly 1/270th of the annealer's cost.
 
 ## 12. Reproducing
 

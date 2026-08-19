@@ -49,8 +49,9 @@ hardware the answer is no, and that is a result rather than an obstacle.
 
 170 measured runs across five catalogues (147 to 11,268 items), five model families and
 two reranking conditions, five repeats each, plus 90 runs on retrieval depth, 63 on
-rerankers, and a further 170 repeating the main sweep with the BLAS thread count pinned. Zero failures, every row passing the trust check on an idle mains-powered
-machine, no stage falling below the clock quantum. Full write-up in
+rerankers, and 323 more repeating all three with the BLAS thread count pinned. Zero
+failures, every row passing the trust check on an idle mains-powered machine, no stage
+falling below the clock quantum. Full write-up in
 [`docs/report.md`](docs/report.md).
 
 An external audit of the first version of this study found six code defects. Everything
@@ -114,15 +115,17 @@ requests. What that buys was **not measured** and is no longer claimed: no model
 sweep was retrained on newer data, because the harness has no temporal split to retrain
 across.
 
-**A classical reranker matches the quantum-inspired ones exactly, for ~1/290th the cost.**
+**A classical reranker matches the quantum-inspired ones exactly, for ~1/270th the cost.**
 `balanced_quota` — largest-remainder apportionment — reaches exposure parity 0.200, the
 optimum permitted by the integrality of list positions, on all three retrieval families,
 and ties both annealers on **900 of 900** paired user-records. This **retracts** the earlier
 claim that the annealers reached a fairness optimum classical methods could not; that claim
 was an artefact of the correct baseline being missing from the registry. What the annealers
 do still buy is list diversity — intra-list similarity 0.286–0.297 against 0.357, better on
-893 of 900 users, p < 0.001 — at 288–290× the cost of the stage that already dominates
-per-request cost.
+893 of 900 users, p < 0.001 — at roughly 250–300× the cost of the stage that already
+dominates per-request cost. That range is wide because `balanced_quota`'s stage cost is only
+about seven clock ticks, so the ratio's denominator is quantised; an earlier draft's
+"288–290×" was false precision inherited from the clock, not a property of the solver.
 
 ---
 

@@ -1,0 +1,114 @@
+{
+  "created_utc": "2026-08-19T19:29:38+00:00",
+  "green_rerank": {
+    "revision": "7c8432571de716e69d89c1372161c0f8c8ffc2ec",
+    "branch": "main",
+    "dirty": false,
+    "tree_dirty": true
+  },
+  "companion": {
+    "revision": "5147c0d92c1b80a2ddbc79191a42eb9f04f957dc",
+    "branch": "main",
+    "dirty": false,
+    "tree_dirty": false,
+    "path": "D:\\Programming\\Projects\\qubo-rerank"
+  },
+  "packages": {
+    "numpy": "2.2.6",
+    "scipy": "1.15.3",
+    "pandas": "2.3.3",
+    "torch": "2.13.0+cpu",
+    "psutil": "7.2.2",
+    "codecarbon": "3.3.0",
+    "dimod": "0.12.22",
+    "dwave-neal": "0.6.0",
+    "dwave-samplers": "1.8.0"
+  },
+  "machine": {
+    "system": "Windows",
+    "release": "10",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 142 Stepping 10, GenuineIntel",
+    "python": "3.10.11",
+    "cpu_logical": 8,
+    "cpu_physical": 4,
+    "cpu_mhz_nominal": 1896.0,
+    "cpu_mhz_at_start": 1696.0,
+    "ram_bytes": 17031348224
+  },
+  "clock_quantum_seconds": 0.015625,
+  "config": {
+    "name": "rerankers_pinned",
+    "catalogues": [
+      "ml100k"
+    ],
+    "families": [
+      "popularity",
+      "itemknn",
+      "als"
+    ],
+    "rerankers": [
+      null,
+      "greedy_topk",
+      "mmr",
+      "quota_mmr",
+      "balanced_quota",
+      "qubo_feasible",
+      "qubo_tabu"
+    ],
+    "n_users": 100,
+    "n_candidates": 100,
+    "k": 10,
+    "repeats": 3,
+    "seed": 0,
+    "lam": 0.3,
+    "mu": 1.0,
+    "require_mains": true,
+    "max_busy_pct": 25.0,
+    "energy": false,
+    "min_users": 50,
+    "min_items": 50,
+    "family_kwargs": {
+      "als": {
+        "epochs": 15
+      }
+    },
+    "prediction": {
+      "registered_before_run": true,
+      "mechanism_under_test": "Whether the QUBO annealers' cost advantage over largest-remainder apportionment is partly an artefact of counting spin-wait in a thread-parallel solver.\n",
+      "expected": {
+        "qubo_feasible_vs_balanced_quota": "remains far above 100x. Point prediction: within +/- 25 % of the unpinned 288-290x, i.e. roughly 215-360x.\n",
+        "qubo_tabu_vs_balanced_quota": "qubo_tabu is wall-clock bounded, so its CPU-seconds should FALL by roughly the factor by which it was multi-threaded, if it was. This is the row most likely to move and the one to watch.\n",
+        "exposure_parity_ties": "balanced_quota still ties both annealers at 0.200 on all 900 paired user-records. Parity is an allocation property and must not move at all.\n",
+        "intra_list_similarity": "annealers still lower than balanced_quota's 0.3573, better on ~893 of 900 users. This is \u00a710's surviving finding and pinning must not touch it.\n",
+        "ndcg_identical": "every accuracy figure bit-identical to rerankers_v2.\n"
+      },
+      "falsified_if": "The qubo_feasible multiplier falls below 100x. That would mean a material part of \u00a710's cost argument was spin-wait rather than work, and the section's central quantity would need restating. A fall in qubo_tabu alone is expected rather than falsifying, because its stopping rule is wall-clock: pinning changes how much CPU time one wall-clock second buys, which is a property of that solver and is already flagged in \u00a710.\n",
+      "not_predicted": "Absolute per-request costs. Whether qubo_tabu remains cheaper than qubo_feasible, since their relationship is set by a timeout rather than by work.\n"
+    },
+    "only_on": {},
+    "trust_busy_pct": 15.0
+  },
+  "preflight": {
+    "power_source": "ac",
+    "machine_busy_pct": 10.8,
+    "exclusive": true,
+    "warnings": []
+  },
+  "trustworthy": true,
+  "conditions": {
+    "power_sources_seen": [
+      "ac"
+    ],
+    "power_source_changed": false,
+    "samples": 670,
+    "cpu_mhz_max": 1696.0,
+    "cpu_mhz_min": 1696.0,
+    "cpu_mhz_mean": 1696.0,
+    "frequency_drop": 0.0,
+    "frequency_sensor_responsive": false,
+    "throttled": null,
+    "conditions_changed": false
+  },
+  "skipped_catalogues": {}
+}

@@ -823,5 +823,72 @@ LITERALS += [
 ]
 
 
+
+
+# ------------------------------------------------ pinned depth and reranker sweeps
+#
+# Appended when results/depth_pinned/ and results/rerankers_pinned/ were added. §7.6 and
+# §10 each gained a table comparing the unpinned measurement against the pinned one.
+
+
+def _stage_ratios(directory: str) -> pd.DataFrame:
+    runs = pd.read_csv(ROOT / "results" / directory / "runs.csv")
+    return runs.groupby(["family", "reranker"]).cpu_rerank.median().unstack()
+
+
+def t_depth_pinned(d: Data) -> list[str]:
+    """§7.6: fitted exponent and cost ratio, unpinned against pinned."""
+    fitted = {}
+    for tag, directory in (("unpinned", "depth_v2"), ("pinned", "depth_pinned")):
+        runs = pd.read_csv(ROOT / "results" / directory / "runs.csv")
+        reranked = runs[runs.reranker == "quota_mmr"]
+        table = reranked.groupby(["n_candidates", "family"]).cpu_rerank.median().reset_index()
+        for family, group in table.groupby("family"):
+            slope = np.polyfit(np.log(group.n_candidates), np.log(group.cpu_rerank), 1)[0]
+            fitted[(tag, family)] = (slope, group.cpu_rerank.max() / group.cpu_rerank.min())
+    return [
+        f"| `{family}` | O(n^{fitted[('unpinned', family)][0]:.2f}), "
+        f"{fitted[('unpinned', family)][1]:.1f}× | "
+        f"O(n^{fitted[('pinned', family)][0]:.2f}), {fitted[('pinned', family)][1]:.1f}× |"
+        for family in ("als", "itemknn", "popularity")
+    ]
+
+
+def t_rerankers_pinned(d: Data) -> list[str]:
+    """§10: the multiplier under both conditions, showing the quantised denominator."""
+    rows = []
+    for tag, directory in (("unpinned", "rerankers_v2"), ("pinned", "rerankers_pinned")):
+        pf = _stage_ratios(directory)
+        cells = []
+        for solver in ("qubo_feasible", "qubo_tabu"):
+            ratios = pf[solver] / pf["balanced_quota"]
+            cells.append(f"{ratios.min():.0f} – {ratios.max():.0f}×")
+        rows.append(f"| {tag} | {cells[0]} | {cells[1]} |")
+    return rows
+
+
+def l_balanced_quota_quanta(d: Data) -> str:
+    """The denominator that limits §10's precision, in clock quanta."""
+    pf = _stage_ratios("rerankers_pinned")
+    costs = sorted(set(pf["balanced_quota"].round(4)))
+    quantum = 0.015625
+    return (
+        f"{costs[0]:.4f} s on two families and {costs[-1]:.4f} s on the third — "
+        f"**{costs[0] / quantum:.1f} and {costs[-1] / quantum:.1f} clock quanta**"
+    )
+
+
+TABLES += [
+    Table("§7.6 depth, pinned vs unpinned", "| family | unpinned | pinned |", t_depth_pinned,
+          ordered=True),
+    Table("§10 multiplier, pinned vs unpinned", "| | `qubo_feasible` vs `balanced_quota` |",
+          t_rerankers_pinned, ordered=True),
+]
+
+LITERALS += [
+    Literal("§10 balanced_quota in clock quanta", l_balanced_quota_quanta),
+]
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

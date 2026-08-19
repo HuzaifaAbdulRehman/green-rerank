@@ -1,0 +1,111 @@
+{
+  "created_utc": "2026-08-19T19:24:27+00:00",
+  "green_rerank": {
+    "revision": "7c8432571de716e69d89c1372161c0f8c8ffc2ec",
+    "branch": "main",
+    "dirty": false,
+    "tree_dirty": false
+  },
+  "companion": {
+    "revision": "5147c0d92c1b80a2ddbc79191a42eb9f04f957dc",
+    "branch": "main",
+    "dirty": false,
+    "tree_dirty": false,
+    "path": "D:\\Programming\\Projects\\qubo-rerank"
+  },
+  "packages": {
+    "numpy": "2.2.6",
+    "scipy": "1.15.3",
+    "pandas": "2.3.3",
+    "torch": "2.13.0+cpu",
+    "psutil": "7.2.2",
+    "codecarbon": "3.3.0",
+    "dimod": "0.12.22",
+    "dwave-neal": "0.6.0",
+    "dwave-samplers": "1.8.0"
+  },
+  "machine": {
+    "system": "Windows",
+    "release": "10",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 142 Stepping 10, GenuineIntel",
+    "python": "3.10.11",
+    "cpu_logical": 8,
+    "cpu_physical": 4,
+    "cpu_mhz_nominal": 1896.0,
+    "cpu_mhz_at_start": 1696.0,
+    "ram_bytes": 17031348224
+  },
+  "clock_quantum_seconds": 0.015625,
+  "config": {
+    "name": "depth_pinned",
+    "catalogues": [
+      "ml100k"
+    ],
+    "families": [
+      "popularity",
+      "itemknn",
+      "als"
+    ],
+    "rerankers": [
+      null,
+      "quota_mmr"
+    ],
+    "n_users": 200,
+    "n_candidates": [
+      50,
+      100,
+      200,
+      400,
+      800
+    ],
+    "k": 10,
+    "repeats": 3,
+    "seed": 0,
+    "lam": 0.3,
+    "mu": 1.0,
+    "require_mains": true,
+    "max_busy_pct": 25.0,
+    "energy": false,
+    "min_users": 50,
+    "min_items": 50,
+    "family_kwargs": {},
+    "prediction": {
+      "registered_before_run": true,
+      "mechanism_under_test": "The reranker is pure-numpy and largely serial, so its stage cost should barely move. Retrieval scoring for ALS is the thread-parallel part, so the share should rise slightly (the denominator shrinks) while the exponent, which is fitted on the rerank stage alone, should be close to unchanged.\n",
+      "expected": {
+        "rerank_stage_exponent": "stays within +/- 0.10 of the unpinned O(n^1.21-1.29). The reranker does not use BLAS heavily, so a large shift would mean the exponent was measuring threading rather than problem size.\n",
+        "rerank_cost_ratio_50_to_800": "stays within +/- 20 % of the unpinned 31.5x.\n",
+        "exposure_parity_flat": "remains flat across depth, per-family spread below 0.05. Parity is a property of the allocation, not of the clock, so any movement here would indicate a bug rather than a threading effect.\n",
+        "share_of_serving_cost": "rises at the low-depth end relative to unpinned 75.1-99.1 %, because ALS's and popularity's retrieval costs fall when the spin-wait is removed while the reranker's does not.\n",
+        "ndcg_identical": "every accuracy figure bit-identical to depth_v2. Pinning must change cost only.\n"
+      },
+      "falsified_if": "The fitted exponent moves by more than 0.10, or the 50-to-800 cost ratio moves by more than 20 %. Either would mean \u00a77.6's scaling law was partly a measurement of thread behaviour rather than of the reranker's problem size, and the O(n^1.2-1.3) claim would need restating with that caveat.\n",
+      "not_predicted": "Absolute per-request costs, which fall by construction. Only ratios, exponents and quality metrics are compared across the two conditions.\n"
+    },
+    "only_on": {},
+    "trust_busy_pct": 15.0
+  },
+  "preflight": {
+    "power_source": "ac",
+    "machine_busy_pct": 4.2,
+    "exclusive": true,
+    "warnings": []
+  },
+  "trustworthy": true,
+  "conditions": {
+    "power_sources_seen": [
+      "ac"
+    ],
+    "power_source_changed": false,
+    "samples": 300,
+    "cpu_mhz_max": 1696.0,
+    "cpu_mhz_min": 1696.0,
+    "cpu_mhz_mean": 1696.0,
+    "frequency_drop": 0.0,
+    "frequency_sensor_responsive": false,
+    "throttled": null,
+    "conditions_changed": false
+  },
+  "skipped_catalogues": {}
+}
